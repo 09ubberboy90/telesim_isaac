@@ -103,7 +103,7 @@ class Subscriber(Node):
         # Get the urdf file path
 
         
-        file_name = "/home/ubb/Documents/isaac_sim/ur_t42.urdf"
+        file_name = "/home/ubb/Documents/isaac_sim/src/urdfs/ur_t42.urdf"
         # Finally import the robot
         result, self.ur3 = omni.kit.commands.execute( "URDFParseAndImportFile", urdf_path=file_name,
                                                       import_config=import_config,)
