@@ -13,6 +13,7 @@ from omni.isaac.core.utils.extensions import enable_extension
 import omni
 from omni.isaac.core.utils.extensions import enable_extension
 from omni.isaac.core import World
+from omni.isaac.core.articulations import ArticulationGripper
 from omni.isaac.urdf import _urdf
 from omni.isaac.core.utils.stage import is_stage_loading
 import omni.graph.core as og
@@ -35,7 +36,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from omni.isaac.core.utils.nucleus import get_assets_root_path, is_file
 from omni.isaac.universal_robots.controllers import RMPFlowController
-
+from std_msgs.msg import Bool
 
 class Subscriber(Node):
     def __init__(self):
@@ -43,25 +44,40 @@ class Subscriber(Node):
         self.setup_scene()
         self.setup_ik()
         self.ros_sub = self.create_subscription(Pose, "RightHand/pose", self.move_cube_callback, 10)
-        self.ros_sub_2 = self.create_subscription(Pose, "LeftHand/pose", self.move_cube_callback_2, 10)
+        # self.ros_sub_2 = self.create_subscription(Pose, "LeftHand/pose", self.move_cube_callback_2, 10)
+        self.trigger_sub = self.create_subscription(Bool, "RightHand/trigger", self.right_trigger_callback, 10)
+        self.trigger_sub_2 = self.create_subscription(Bool, "LeftHand/trigger", self.left_trigger_callback, 10)
         self.timeline = omni.timeline.get_timeline_interface()
 
 
 
     def move_cube_callback(self, data:Pose):
         if self.ros_world.is_playing():
-            self.stage.GetPrimAtPath("/World/TargetCube").GetAttribute("xformOp:translate").Set((-data.position.x, data.position.z, data.position.y))
-            self.stage.GetPrimAtPath("/World/TargetCube").GetAttribute("xformOp:orient").Set(Quatd(data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
+            self.panda_hand_visualization.set_world_pose((-data.position.z, -data.position.x, data.position.y), (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
 
-    def move_cube_callback_2(self, data:Pose):
-        if self.ros_world.is_playing():
-            self.stage.GetPrimAtPath("/World/TargetCube_2").GetAttribute("xformOp:translate").Set((-data.position.x, data.position.z, data.position.y))
-            self.stage.GetPrimAtPath("/World/TargetCube_2").GetAttribute("xformOp:orient").Set(Quatd(data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
- 
+    # def move_cube_callback_2(self, data:Pose):
+    #     if self.ros_world.is_playing():
+    #         self.panda_hand_visualization_2.set_world_pose((-data.position.z, -data.position.x, data.position.y), (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
+    
+    def left_trigger_callback(self, data:Bool):
+        if data.data:
+            self.left_gripper.set_positions(self.left_gripper.closed_position)
+        else:
+            self.left_gripper.set_positions(self.left_gripper.open_position)
+        
+    def right_trigger_callback(self, data:Bool):
+        if data.data:
+            self.right_gripper.set_positions(self.right_gripper.closed_position)
+        else:
+            self.right_gripper.set_positions(self.right_gripper.open_position)
+
+
     def run_simulation(self):
         #Track any movements of the robot base
-
+        counter = 0
         self.timeline.play()
+        robot_base_translation,robot_base_orientation = self.baxter_robot.get_world_pose()
+        self.lula_kinematics_solver.set_robot_base_pose(robot_base_translation,robot_base_orientation)
         while simulation_app.is_running():
             self.ros_world.step(render=True)
             rclpy.spin_once(self, timeout_sec=0.0)
@@ -69,31 +85,18 @@ class Subscriber(Node):
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
 
-                robot_base_translation,robot_base_orientation = self.baxter_robot.get_world_pose()
-                self.lula_kinematics_solver.set_robot_base_pose(robot_base_translation,robot_base_orientation)
-                self.lula_kinematics_solver_2.set_robot_base_pose(robot_base_translation,robot_base_orientation)
 
-
-                pose, orientation = self.panda_hand_visualization.get_world_pose()
-                actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
-                    target_position=pose,
-                    target_orientation=orientation,
-                )
-                if success:
-                    self.articulation_controller.apply_action(actions)
-                else:
-                    carb.log_warn("IK did not converge to a solution.  No action is being taken.")
-
-                pose_2, orientation_2 = self.panda_hand_visualization_2.get_world_pose()
-                actions_2, success_2 = self.articulation_kinematics_solver_2.compute_inverse_kinematics(
-                    target_position=pose_2,
-                    target_orientation=orientation_2,
-                )
-                if success_2:
-                    self.articulation_controller.apply_action(actions_2)
-                else:
-                    carb.log_warn("IK_2 did not converge to a solution.  No action is being taken.")
-
+                if counter % 15 == 0: ## Roughly 500 ms
+                    pose, orientation = self.panda_hand_visualization.get_world_pose()
+                    actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
+                        target_position=pose,
+                        target_orientation=orientation,
+                    )
+                    if success:
+                        self.articulation_controller.apply_action(actions)
+                    else:
+                        carb.log_warn("IK did not converge to a solution.  No action is being taken.")
+                counter += 1
         # Cleanup
         self.timeline.stop()
         self.destroy_node()
@@ -200,6 +203,13 @@ class Subscriber(Node):
         simulation_app.update()
 
     def setup_ik(self):
+
+        self.left_gripper = ArticulationGripper(gripper_dof_names=['l_gripper_l_finger_joint', 'l_gripper_r_finger_joint'], gripper_closed_position= [0.0,0.0], gripper_open_position=[0.020833, -0.020833])
+        self.left_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
+        
+        self.right_gripper = ArticulationGripper(gripper_dof_names=['r_gripper_l_finger_joint', 'r_gripper_r_finger_joint'], gripper_closed_position= [0.0,0.0], gripper_open_position=[0.020833, -0.020833])
+        self.right_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
+
         self.target_name = "/World/TargetCube"
         self.mg_extension_path = get_extension_path_from_name("omni.isaac.motion_generation")
         self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
@@ -209,31 +219,22 @@ class Subscriber(Node):
             robot_description_path = "/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow/robot_descriptor.yaml",
             urdf_path = self.file_name
         )
-        self.lula_kinematics_solver_2 = LulaKinematicsSolver(
-            robot_description_path = "/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow/robot_descriptor.yaml",
-            urdf_path = self.file_name
-        )
         
         print("Valid frame names at which to compute kinematics:", self.lula_kinematics_solver.get_all_frame_names())
 
         self.end_effector_name = "right_hand"
         self.articulation_kinematics_solver = ArticulationKinematicsSolver(self.baxter_robot,self.lula_kinematics_solver,self.end_effector_name)
-        self.end_effector_name_2 = "left_hand"
-        self.articulation_kinematics_solver_2 = ArticulationKinematicsSolver(self.baxter_robot,self.lula_kinematics_solver_2,self.end_effector_name_2)
-
         #Query the position of the "panda_hand" frame
         self.ee_position,ee_rot_mat = self.articulation_kinematics_solver.compute_end_effector_pose()
         self.ee_orientation = rot_matrices_to_quats(ee_rot_mat)
 
-        self.ee_position_2,ee_rot_mat_2 = self.articulation_kinematics_solver_2.compute_end_effector_pose()
-        self.ee_orientation_2 = rot_matrices_to_quats(ee_rot_mat_2)
 
         #Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.panda_hand_visualization = VisualCuboid("/World/TargetCube",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
-        self.panda_hand_visualization_2 = VisualCuboid("/World/TargetCube_2",position=self.ee_position_2,orientation=self.ee_orientation_2,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
+        self.panda_hand_visualization_2 = VisualCuboid("/World/TargetCube_2",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
-
+        print(self.articulation_controller._articulation_view.dof_names)
 
 if __name__ == "__main__":
     rclpy.init()
