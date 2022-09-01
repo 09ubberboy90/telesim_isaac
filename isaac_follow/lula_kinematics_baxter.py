@@ -1,3 +1,4 @@
+from collections import defaultdict
 from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
@@ -37,69 +38,75 @@ from geometry_msgs.msg import Pose
 from omni.isaac.core.utils.nucleus import get_assets_root_path, is_file
 from omni.isaac.universal_robots.controllers import RMPFlowController
 from std_msgs.msg import Bool
+from threading import Thread
+
 
 class Subscriber(Node):
     def __init__(self):
         super().__init__("tutorial_subscriber")
         self.setup_scene()
         self.setup_ik()
-        self.ros_sub = self.create_subscription(Pose, "RightHand/pose", self.move_cube_callback, 10)
+        self.ros_sub = self.create_subscription(Pose, "RightHand/pose", self.move_right_cube_callback, 10)
         # self.ros_sub_2 = self.create_subscription(Pose, "LeftHand/pose", self.move_cube_callback_2, 10)
         self.trigger_sub = self.create_subscription(Bool, "RightHand/trigger", self.right_trigger_callback, 10)
-        self.trigger_sub_2 = self.create_subscription(Bool, "LeftHand/trigger", self.left_trigger_callback, 10)
+        # self.trigger_sub_2 = self.create_subscription(Bool, "LeftHand/trigger", self.left_trigger_callback, 10)
         self.timeline = omni.timeline.get_timeline_interface()
+        self.right_cube_pose = None
+        self.trigger = defaultdict(lambda: False)
 
 
-
-    def move_cube_callback(self, data:Pose):
-        if self.ros_world.is_playing():
-            self.panda_hand_visualization.set_world_pose((-data.position.z, -data.position.x, data.position.y), (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
+    def move_right_cube_callback(self, data:Pose):
+        self.right_cube_pose = ((-data.position.z, -data.position.x, data.position.y), (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
 
     # def move_cube_callback_2(self, data:Pose):
     #     if self.ros_world.is_playing():
-    #         self.panda_hand_visualization_2.set_world_pose((-data.position.z, -data.position.x, data.position.y), (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
+    #         self.left_cube.set_world_pose((-data.position.z, -data.position.x, data.position.y), (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z))
     
-    def left_trigger_callback(self, data:Bool):
-        if data.data:
-            self.left_gripper.set_positions(self.left_gripper.closed_position)
-        else:
-            self.left_gripper.set_positions(self.left_gripper.open_position)
+    # def left_trigger_callback(self, data:Bool):
+    #     if data.data:
+    #         self.left_gripper.set_positions(self.left_gripper.closed_position)
+    #     else:
+    #         self.left_gripper.set_positions(self.left_gripper.open_position)
         
     def right_trigger_callback(self, data:Bool):
-        if data.data:
-            self.right_gripper.set_positions(self.right_gripper.closed_position)
-        else:
-            self.right_gripper.set_positions(self.right_gripper.open_position)
-
+        self.trigger["right"] = data.data
 
     def run_simulation(self):
         #Track any movements of the robot base
         counter = 0
+        rclpy_thread = Thread(target=lambda: rclpy.spin(self))
+        rclpy_thread.start()
+
         self.timeline.play()
         robot_base_translation,robot_base_orientation = self.baxter_robot.get_world_pose()
         self.lula_kinematics_solver.set_robot_base_pose(robot_base_translation,robot_base_orientation)
         while simulation_app.is_running():
             self.ros_world.step(render=True)
-            rclpy.spin_once(self, timeout_sec=0.0)
+            # rclpy.spin_once(self, timeout_sec=0.0)
             if self.ros_world.is_playing():
-                if self.ros_world.current_time_step_index == 0:
-                    self.ros_world.reset()
-
-
-                if counter % 15 == 0: ## Roughly 500 ms
-                    pose, orientation = self.panda_hand_visualization.get_world_pose()
-                    actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
-                        target_position=pose,
-                        target_orientation=orientation,
-                    )
-                    if success:
-                        self.articulation_controller.apply_action(actions)
-                    else:
+                if self.right_cube_pose is not None:
+                    self.right_cube.set_world_pose(*self.right_cube_pose)
+                if self.trigger["right"]:
+                    self.right_gripper.set_positions(self.right_gripper.closed_position)
+                else:
+                    self.right_gripper.set_positions(self.right_gripper.open_position)
+                # if self.ros_world.current_time_step_index == 0:
+                #     self.ros_world.reset()
+                pose, orientation = self.right_cube.get_world_pose()
+                actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
+                    target_position=pose,
+                    target_orientation=orientation,
+                )
+                if success:
+                    self.articulation_controller.apply_action(actions)
+                else:
+                    if counter % 15 == 0: ## Roughly 500 ms
                         carb.log_warn("IK did not converge to a solution.  No action is being taken.")
-                counter += 1
+                    counter += 1
         # Cleanup
         self.timeline.stop()
         self.destroy_node()
+        rclpy_thread.join()
         simulation_app.close()
 
     def setup_scene(self):
@@ -230,8 +237,8 @@ class Subscriber(Node):
 
 
         #Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
-        self.panda_hand_visualization = VisualCuboid("/World/TargetCube",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
-        self.panda_hand_visualization_2 = VisualCuboid("/World/TargetCube_2",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
+        self.right_cube = VisualCuboid("/World/TargetCube",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
+        self.left_cube = VisualCuboid("/World/TargetCube_2",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
         print(self.articulation_controller._articulation_view.dof_names)
