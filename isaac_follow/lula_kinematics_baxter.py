@@ -46,8 +46,8 @@ class Subscriber(Node):
         self.setup_scene()
         self.setup_ik()
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
-        # self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
-        # self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
+        self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
+        self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.timeline = omni.timeline.get_timeline_interface()
@@ -59,14 +59,19 @@ class Subscriber(Node):
         self.tracking_enabled = data.data
 
     def move_right_cube_callback(self, data: Pose):
+        # Make sure to respect the parity (Levi-Civita symbol)
         self.right_cube_pose = (
-            (-data.position.z, -data.position.x, data.position.y),
-            (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z),
+            (-data.position.x, data.position.z, data.position.y),
+            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
+
         )
     def move_left_cube_callback(self, data: Pose):
+        # Make sure to respect the parity (Levi-Civita symbol)
         self.left_cube_pose = (
-            (-data.position.z, -data.position.x, data.position.y),
-            (data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z),
+            (-data.position.x, data.position.z, data.position.y),
+            # (data.orientation.w, -data.orientation.z, -data.orientation.x, -data.orientation.y),
+            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
+
         )
 
     def right_trigger_callback(self, data: Bool):
