@@ -143,7 +143,6 @@ class Subscriber(Node):
                             carb.log_warn("Right IK did not converge to a solution.  No action is being taken.")
                         counter += 1
 
-                    # action = [right_actions.joint_positions[i] if not np.isnan(right_actions.joint_positions[i]) else left_actions.joint_positions[i] for i in range(right_actions.get_length()) ]
         # Cleanup
         self.timeline.stop()
         event.set()
@@ -208,7 +207,7 @@ class Subscriber(Node):
         self.table = XFormPrim(
             prim_path="/World/table",
             name="table",
-            position=np.array([0.6,0.0,-1.0]),
+            position=np.array([0.6,0.034,-0.975]),
             orientation=np.array([0.7073883, 0, 0, 0.7068252]),
             scale=np.array([0.7,0.6,1.15]),
         )  # w,x,y,z
@@ -298,15 +297,12 @@ class Subscriber(Node):
         self.left_articulation_kinematics_solver = ArticulationKinematicsSolver(
             self.baxter_robot, self.left_kinematics_solver, self.end_effector_name
         )
-        # Query the position of the "panda_hand" frame
-        ee_position, ee_rot_mat = self.right_articulation_kinematics_solver.compute_end_effector_pose()
-        ee_orientation = rot_matrices_to_quats(ee_rot_mat)
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/right_cube",
-            position=ee_position,
-            orientation=ee_orientation,
+            position=np.array([0.8, -0.1, 0.1]),
+            orientation=np.array([0,-1, 0, 0]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
@@ -316,8 +312,8 @@ class Subscriber(Node):
 
         self.left_cube = VisualCuboid(
             "/World/left_cube",
-            position=ee_position,
-            orientation=ee_orientation,
+            position=np.array([0.8, 0.1, 0.1]),
+            orientation=np.array([0,-1,0,0]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
