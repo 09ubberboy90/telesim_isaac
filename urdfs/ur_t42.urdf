@@ -132,7 +132,7 @@
     <visual>
       <origin rpy="0 0 1.57" xyz="0.1 -0.035 -0.09"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/actuator_block_t42.stl" scale="0.1 0.1 0.1"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/actuator_block_t42.stl" scale="1 1 1"/>
       </geometry>
       <material name="black">
         <color rgba="0.1 0.1 0.1 1"/>
@@ -149,7 +149,7 @@
     <collision>
       <origin rpy="0 0 1.57" xyz="0.1 -0.035 -0.09"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/actuator_block_t42.stl" scale="0.1 0.1 0.1"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/actuator_block_t42.stl" scale="1 1 1"/>
       </geometry>
     </collision>
   </link>
@@ -160,13 +160,13 @@
       </material>
       <origin rpy="0 1.57 1.57" xyz="-0.016510 0.026 0"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 1.57 1.57" xyz="-0.016510 0.026 0"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -183,13 +183,13 @@
       </material>
       <origin xyz="-0.015875 -0.009000 -0.071550"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="-0.015875 -0.009000 -0.071550"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
       </geometry>
     </collision>
   </link>
@@ -207,8 +207,8 @@
       <origin xyz="-0.015875 -0.011709 -0.048006"/>
       <!-- Pointed distal tips -->
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
-        <!-- <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/distal_t42.STL" scale="0.025400 0.025400 0.025400" /> -->
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
+        <!-- <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/distal_t42.STL" scale="0.025400 0.025400 0.025400" /> -->
         <!-- Pointed distal tips -->
       </geometry>
     </visual>
@@ -216,7 +216,7 @@
       <origin xyz="-0.015875 -0.011709 -0.048006"/>
       <!-- Pointed distal tips -->
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -227,13 +227,13 @@
       </material>
       <origin rpy="0 1.57 1.57" xyz="-0.016510 -0.026 0"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 1.57 1.57" xyz="-0.016510 -0.026 0"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/swivel_t42.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -249,13 +249,13 @@
       </material>
       <origin xyz="-0.015875 -0.009000 -0.071550"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="-0.015875 -0.009000 -0.071550"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/proximal_t42.STL" scale="0.025400 0.025400 0.025400"/>
       </geometry>
     </collision>
   </link>
@@ -271,13 +271,13 @@
       </material>
       <origin xyz="-0.015875 -0.011709 -0.048006"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="-0.015875 -0.011709 -0.048006"/>
       <geometry>
-        <mesh filename="/home/ubb/Documents/VR_galactic/src/t42_gripper/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="/home/ubb/Documents/t42_gripper/src/t42_gripper_description/meshes/distal_round_t42_filled.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -323,10 +323,60 @@
     <axis xyz="1 0 0"/>
     <dynamics damping="7.0" friction="0.0"/>
   </joint>
-  <!-- Transmissions
-
-
-
+<transmission name="shoulder_pan_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="shoulder_pan_joint">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="shoulder_pan_motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="shoulder_lift_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="shoulder_lift_joint">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="shoulder_lift_motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="elbow_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="elbow_joint">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="elbow_motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="wrist_1_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="wrist_1_joint">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="wrist_1_motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="wrist_2_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="wrist_2_joint">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="wrist_2_motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="wrist_3_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="wrist_3_joint">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="wrist_3_motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <transmission name="finger1_2_trans" type="SimpleTransmission">
       <type>transmission_interface/SimpleTransmission</type>
       <actuator name="$finger12_motor">
@@ -365,7 +415,7 @@
       <joint name="finger_2_1_to_finger_2_2">
           <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       </joint>
-  </transmission> -->
+  </transmission> 
   <joint name="tool_to_gripper" type="fixed">
     <origin rpy="0 1.57 0" xyz="0 0 0.05"/>
     <parent link="tool0"/>
@@ -741,7 +791,7 @@
     <child link="base_link"/>
   </joint>
   <!-- joints - main serial chain -->
-  <joint name="base_link-base_link_inertia" type="fixed">
+  <joint name="base_link_base_link_inertia" type="fixed">
     <parent link="base_link"/>
     <child link="base_link_inertia"/>
     <!-- 'base_link' is REP-103 aligned (so X+ forward), while the internal
@@ -806,14 +856,14 @@
     <dynamics damping="0" friction="0"/>
   </joint>
   <link name="ee_link"/>
-  <joint name="wrist_3_link-ee_link" type="fixed">
+  <joint name="wrist_3_link_ee_link" type="fixed">
     <parent link="wrist_3_link"/>
     <child link="ee_link"/>
     <origin rpy="3.141592653589793 0 0" xyz="0 0 0"/>
   </joint>
   <!-- ROS-Industrial 'base' frame - base_link to UR 'Base' Coordinates transform -->
   <link name="base"/>
-  <joint name="base_link-base_fixed_joint" type="fixed">
+  <joint name="base_link_base_fixed_joint" type="fixed">
     <!-- Note the rotation over Z of pi radians - as base_link is REP-103
            aligned (i.e., has X+ forward, Y+ left and Z+ up), this is needed
            to correctly align 'base' with the 'Base' coordinate system of
@@ -824,16 +874,17 @@
     <child link="base"/>
   </joint>
   <link name="flange"/>
-  <joint name="wrist_3-flange" type="fixed">
+  <joint name="wrist_3_flange" type="fixed">
     <parent link="wrist_3_link"/>
     <child link="flange"/>
     <origin rpy="0 -1.5707963267948966 -1.5707963267948966" xyz="0 0 0"/>
   </joint>
   <!-- ROS-Industrial 'tool0' frame - all-zeros tool frame -->
   <link name="tool0"/>
-  <joint name="flange-tool0" type="fixed">
+  <joint name="flange_tool0" type="fixed">
     <!-- default toolframe - X+ left, Y+ up, Z+ front -->
     <origin rpy="1.5707963267948966 0 1.5707963267948966" xyz="0 0 0"/>
     <parent link="flange"/>
     <child link="tool0"/>
-  </joint></robot>
+  </joint>
+</robot>
