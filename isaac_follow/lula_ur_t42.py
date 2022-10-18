@@ -2,83 +2,117 @@ from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
-from omni.isaac.universal_robots.tasks import FollowTarget
-from omni.isaac.motion_generation import LulaKinematicsSolver, ArticulationKinematicsSolver
-from omni.isaac.core import World
-import carb
-from omni.isaac.core.utils.extensions import get_extension_path_from_name
-from omni.isaac.core.utils.numpy.rotations import rot_matrices_to_quats
-import os, sys
-from omni.isaac.core.utils.extensions import enable_extension
-import omni
-from omni.isaac.core.utils.extensions import enable_extension
-from omni.isaac.core import World
-from omni.isaac.urdf import _urdf
-from omni.isaac.core.utils.stage import is_stage_loading
-import omni.graph.core as og
-from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.isaac.core.utils.stage import add_reference_to_stage, get_stage_units
-from omni.isaac.core.robots.robot import Robot
-from omni.isaac.universal_robots import UR10
-from omni.isaac.core.objects.cuboid import VisualCuboid
-from omni.isaac.surface_gripper import SurfaceGripper
+import os
+import sys
+from collections import defaultdict
 
+import carb
+import omni
+import omni.graph.core as og
+from omni.isaac.core import World
+from omni.isaac.core.articulations import ArticulationGripper
+from omni.isaac.core.objects.cuboid import VisualCuboid
+from omni.isaac.core.prims.xform_prim import XFormPrim
+from omni.isaac.core.robots.robot import Robot
+from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
+from omni.isaac.core.utils.numpy.rotations import rot_matrices_to_quats
+from omni.isaac.core.utils.stage import add_reference_to_stage, is_stage_loading
+from omni.isaac.core.utils.prims import delete_prim
+from omni.isaac.core_nodes.scripts.utils import set_target_prims
+from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
+
+disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
 
 simulation_app.update()
 
-# Note that this is not the system level rclpy, but one compiled for omniverse
+from threading import Thread, Event
+
 import numpy as np
+
+# Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
-from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from omni.isaac.core.utils.nucleus import get_assets_root_path, is_file
 from omni.isaac.universal_robots.controllers import RMPFlowController
-
+from rclpy.node import Node
+from std_msgs.msg import Bool
+from sensor_msgs.msg import JointState
 
 class Subscriber(Node):
     def __init__(self):
-        super().__init__("tutorial_subscriber")
+        super().__init__("isaac_sim_loop")
+        self.tracking_enabled = True
         self.setup_scene()
         self.setup_ik()
-        self.ros_sub = self.create_subscription(Pose, "RightHand/pose", self.move_cube_callback, 10)
+        self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
+        self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_cube_callback, 10)
+        self.trigger_sub = self.create_subscription(JointState, "gripper_joint_states", self.trigger_callback, 10)
         self.timeline = omni.timeline.get_timeline_interface()
+        self.cube_pose = None
+        self.trigger = False
 
+    def enable_tracking(self, data: Bool):
+        self.tracking_enabled = data.data
 
+    def move_cube_callback(self, data: Pose):
+        # Make sure to respect the parity (Levi-Civita symbol)
+        self.cube_pose = (
+            (-data.position.x, data.position.z, data.position.y),
+            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
 
-    def move_cube_callback(self, data:Pose):
-        # callback function to set the cube position to a new one upon receiving a (empty) ROS2 message
-        if self.ros_world.is_playing():
-            self.stage.GetPrimAtPath("/World/TargetCube").GetAttribute("xformOp:translate").Set((data.position.z, data.position.x, data.position.y))
-            print((data.position.x, data.position.y, data.position.z))
- 
+        )
+
+    def trigger_callback(self, data: Bool):
+        self.trigger = data.data
+    
+    def rclpy_spinner(self, event):
+        while not event.is_set():
+            rclpy.spin_once(self)
+
     def run_simulation(self):
-        #Track any movements of the robot base
+        # Track any movements of the robot base
+        counter = 0
+        event = Event()
+        rclpy_thread = Thread(target=self.rclpy_spinner, args=[event])
+        rclpy_thread.start()
 
         self.timeline.play()
+        robot_base_translation, robot_base_orientation = self.ur_t42_robot.get_world_pose()
+        self.kinematics_solver.set_robot_base_pose(robot_base_translation, robot_base_orientation)
         while simulation_app.is_running():
             self.ros_world.step(render=True)
-            rclpy.spin_once(self, timeout_sec=0.0)
+            # rclpy.spin_once(self, timeout_sec=0.0)
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
 
-                robot_base_translation,robot_base_orientation = self.ur3_robot.get_world_pose()
-                self.lula_kinematics_solver.set_robot_base_pose(robot_base_translation,robot_base_orientation)
+                if self.cube_pose is not None:
+                    self.cube.set_world_pose(*self.cube_pose)
 
-
-                pose, orientation = self.panda_hand_visualization.get_world_pose()
-                actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
-                    target_position=pose,
-                    target_orientation=orientation,
-                )
-                if success:
-                    self.articulation_controller.apply_action(actions)
+                if self.trigger:
+                    self.gripper.set_positions(self.gripper.closed_position)
                 else:
-                    carb.log_warn("IK did not converge to a solution.  No action is being taken.")
+                    self.gripper.set_positions(self.gripper.open_position)
+
+                if self.tracking_enabled:
+
+                    pose, orientation = self.cube.get_world_pose()
+                    actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
+                        target_position=pose,
+                        target_orientation=orientation,
+                    )
+                    if success:
+                        self.articulation_controller.apply_action(actions)
+                    else:
+                        if counter % 15 == 0:  ## Roughly 500 ms
+                            carb.log_warn("Right IK did not converge to a solution.  No action is being taken.")
+                        counter += 1
 
         # Cleanup
         self.timeline.stop()
+        event.set()
+        rclpy_thread.join()
         self.destroy_node()
         simulation_app.close()
 
@@ -90,7 +124,6 @@ class Subscriber(Node):
             simulation_app.close()
             sys.exit()
         usd_path = assets_root_path + "/Isaac/Environments/Simple_Room/simple_room.usd"
-        print(assets_root_path)
         omni.usd.get_context().open_stage(usd_path)
         # Wait two frames so that stage starts loading
         simulation_app.update()
@@ -105,38 +138,51 @@ class Subscriber(Node):
         status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
         import_config.merge_fixed_joints = False
         import_config.convex_decomp = False
-        import_config.import_inertia_tensor = True
+        import_config.import_inertia_tensor = False
         import_config.fix_base = True
         import_config.distance_scale = 1
+        import_config.self_collision = True
         # Get the urdf file path
 
         
         self.file_name = "/home/ubb/Documents/isaac_sim/src/urdfs/ur_t42.urdf"
         # Finally import the robot
-        result, self.ur3 = omni.kit.commands.execute( "URDFParseAndImportFile", urdf_path=self.file_name,
-                                                      import_config=import_config)
+        result, self.ur_t42 = omni.kit.commands.execute(
+            "URDFParseAndImportFile", urdf_path=self.file_name, import_config=import_config
+        )
 
-
-
-        self.ur3_robot = UR10(prim_path=self.ur3, name="ur3", attach_gripper=False)
-        gripper_usd = "/Projects/t42.usd"
-
-        self.ros_world.scene.add(self.ur3_robot)
-        # my_task = FollowTarget(name="follow_target_task", ur10_prim_path=self.ur3,
-        #                        ur10_robot_name="ur3", target_name="target")
+        self.ur_t42_robot = self.ros_world.scene.add(Robot(prim_path=self.ur_t42, name="ur_t42"))
+        # my_task = FollowTarget(name="follow_target_task", ur10_prim_path=self.ur_t42,
+        #                        ur10_robot_name="ur_t42", target_name="target")
 
         # self.ros_world.add_task(my_task)
 
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
 
-        self.ur3_robot = self.ros_world.scene.get_object("ur3")
+        self.stage = simulation_app.context.get_stage()
+        table = self.stage.GetPrimAtPath("/Root/table_low_327")
+        print(table)
+        delete_prim("/Root/table_low_327")
+        
 
-        print(self.ur3_robot)
-        # self._controller = RMPFlowController(name="target_follower_controller", robot_articulation=self.ur3_robot)
+        self.franka_table_usd = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
+        add_reference_to_stage(
+            usd_path=self.franka_table_usd,
+            prim_path="/World/table",
+        )
+        self.table = XFormPrim(
+            prim_path="/World/table",
+            name="table",
+            position=np.array([0.25,0.0,-0.75]),
+            orientation=np.array([0.7073883, 0, 0, 0.7068252]),
+            scale=np.array([0.7,0.6,1.15]),
+        )  # w,x,y,z
 
-        #self.create_action_graph()
-    
+        # self._controller = RMPFlowController(name="target_follower_controller", robot_articulation=self.ur_t42_robot)
+
+        self.create_action_graph()
+
     def create_action_graph(self):
         try:
             og.Controller.edit(
@@ -161,51 +207,59 @@ class Subscriber(Node):
                     ],
                     og.Controller.Keys.SET_VALUES: [
                         ("PublishJointState.inputs:topicName", "joint_states_sim"),
-                        ("SubscribeJointState.inputs:topicName", "joint_states"),
+                        ("SubscribeJointState.inputs:topicName", "robot/joint_states"),
                         ("PublishTF.inputs:topicName", "tf_sim"),
                     ],
-
                 },
             )
         except Exception as e:
             print(e)
 
-
         # Setting the /Franka target prim to Subscribe JointState node
-        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.ur3])
+        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.ur_t42])
 
         # Setting the /Franka target prim to Publish JointState node
-        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.ur3])
+        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.ur_t42])
 
         # Setting the /Franka target prim to Publish Transform Tree node
-        set_target_prims(primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.ur3])
+        set_target_prims(
+            primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.ur_t42]
+        )
 
         simulation_app.update()
 
     def setup_ik(self):
-        self.target_name = "/World/TargetCube"
-        self.mg_extension_path = get_extension_path_from_name("omni.isaac.motion_generation")
-        self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
-        self.stage = simulation_app.context.get_stage()
 
-        self.lula_kinematics_solver = LulaKinematicsSolver(
-            robot_description_path = self.kinematics_config_dir + "/ur10/rmpflow/ur10_robot_description.yaml",
-            urdf_path = self.file_name
+        self.gripper = ArticulationGripper(
+            gripper_dof_names=["swivel_2_to_finger_2_1", "finger_2_1_to_finger_2_2", "swivel_1_to_finger_1_1", "finger_1_1_to_finger_1_2"],
+            gripper_closed_position=[1.57,0.785,1.57,0.785],
+            gripper_open_position=[0.0, 0.0, 0.0, 0.0],
         )
+        self.gripper.initialize(self.ur_t42, self.ur_t42_robot.get_articulation_controller())
+
+
+        self.kinematics_solver = LulaKinematicsSolver(
+            robot_description_path="/home/ubb/Documents/VR_galactic/src/ur_isaac/config/ur3_robot_description.yaml",
+            urdf_path=self.file_name,
+        )
+
+        self.end_effector_name = "t42_base_link"
+        self.articulation_kinematics_solver = ArticulationKinematicsSolver(
+            self.ur_t42_robot, self.kinematics_solver, self.end_effector_name
+        )
+
+        # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
+        self.cube = VisualCuboid(
+            "/World/cube",
+            position=np.array([0.8, -0.1, 0.1]),
+            orientation=np.array([0,-1, 0, 0]),
+            size=np.array([0.05, 0.05, 0.05]),
+            color=np.array([0, 0, 1]),
+        )
+
+        self.articulation_controller = self.ur_t42_robot.get_articulation_controller()
+        # print(self.articulation_controller._articulation_view.dof_names)
         
-        print("Valid frame names at which to compute kinematics:", self.lula_kinematics_solver.get_all_frame_names())
-
-        self.end_effector_name = "tool0"
-        self.articulation_kinematics_solver = ArticulationKinematicsSolver(self.ur3_robot,self.lula_kinematics_solver,self.end_effector_name)
-
-        #Query the position of the "panda_hand" frame
-        self.ee_position,ee_rot_mat = self.articulation_kinematics_solver.compute_end_effector_pose()
-        self.ee_orientation = rot_matrices_to_quats(ee_rot_mat)
-
-        #Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
-        self.panda_hand_visualization = VisualCuboid("/World/TargetCube",position=self.ee_position,orientation=self.ee_orientation,size=np.array([.05,.05,.05]),color=np.array([0,0,1]))
-
-        self.articulation_controller = self.ur3_robot.get_articulation_controller()
 
 
 if __name__ == "__main__":
