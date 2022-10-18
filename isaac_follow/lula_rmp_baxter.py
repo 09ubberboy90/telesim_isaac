@@ -2,7 +2,9 @@ from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
+import os
 import sys
+from collections import defaultdict
 
 import carb
 import omni
@@ -11,10 +13,11 @@ from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
 from omni.isaac.core.objects.cuboid import VisualCuboid
 from omni.isaac.core.robots.robot import Robot
-from omni.isaac.core.utils.extensions import enable_extension, disable_extension
+from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
 from omni.isaac.core.utils.stage import is_stage_loading
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
+from omni.isaac.motion_generation.lula import RmpFlow
+from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.usd import Gf
 
 disable_extension("omni.isaac.ros_bridge")
@@ -32,7 +35,7 @@ from geometry_msgs.msg import Pose
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
 from std_msgs.msg import Bool
-from sensor_msgs.msg import JointState
+
 
 class Subscriber(Node):
     def __init__(self):
@@ -41,40 +44,52 @@ class Subscriber(Node):
         self.setup_scene()
         self.setup_ik()
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
-        self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_cube_callback, 10)
-        self.trigger_sub = self.create_subscription(JointState, "gripper_joint_states", self.trigger_callback, 10)
+        self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
+        self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
+        self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
+        self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.timeline = omni.timeline.get_timeline_interface()
-        self.cube_pose = None
-        self.trigger = False
+        self.right_cube_pose = None
+        self.left_cube_pose = None
+        self.trigger = defaultdict(lambda: False)
 
     def enable_tracking(self, data: Bool):
         self.tracking_enabled = data.data
 
-    def move_cube_callback(self, data: Pose):
+    def move_right_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
-        self.cube_pose = (
+        self.right_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
             (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
 
         )
+    def move_left_cube_callback(self, data: Pose):
+        # Make sure to respect the parity (Levi-Civita symbol)
+        self.left_cube_pose = (
+            (-data.position.x, data.position.z, data.position.y),
+            # (data.orientation.w, -data.orientation.z, -data.orientation.x, -data.orientation.y),
+            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
 
-    def trigger_callback(self, data: Bool):
-        self.trigger = data.data
+        )
+
+    def right_trigger_callback(self, data: Bool):
+        self.trigger["right"] = data.data
     
+    def left_trigger_callback(self, data: Bool):
+        self.trigger["left"] = data.data
+
     def rclpy_spinner(self, event):
         while not event.is_set():
             rclpy.spin_once(self)
 
     def run_simulation(self):
         # Track any movements of the robot base
-        counter = 0
+
         event = Event()
         rclpy_thread = Thread(target=self.rclpy_spinner, args=[event])
         rclpy_thread.start()
 
         self.timeline.play()
-        robot_base_translation, robot_base_orientation = self.ur_t42_robot.get_world_pose()
-        self.kinematics_solver.set_robot_base_pose(robot_base_translation, robot_base_orientation)
         while simulation_app.is_running():
             self.ros_world.step(render=True)
             # rclpy.spin_once(self, timeout_sec=0.0)
@@ -82,27 +97,41 @@ class Subscriber(Node):
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
 
-                if self.cube_pose is not None:
-                    self.cube.set_world_pose(*self.cube_pose)
+                if self.left_cube_pose is not None:
+                    self.left_cube.set_world_pose(*self.left_cube_pose)
+                if self.right_cube_pose is not None:
+                    self.right_cube.set_world_pose(*self.right_cube_pose)
 
-                if self.trigger:
-                    self.gripper.set_positions(self.gripper.closed_position)
+                if self.trigger["right"]:
+                    self.right_gripper.set_positions(self.right_gripper.closed_position)
                 else:
-                    self.gripper.set_positions(self.gripper.open_position)
+                    self.right_gripper.set_positions(self.right_gripper.open_position)
+
+                if self.trigger["left"]:
+                    self.left_gripper.set_positions(self.left_gripper.closed_position)
+                else:
+                    self.left_gripper.set_positions(self.left_gripper.open_position)
 
                 if self.tracking_enabled:
 
-                    pose, orientation = self.cube.get_world_pose()
-                    actions, success = self.articulation_kinematics_solver.compute_inverse_kinematics(
+                    pose, orientation = self.right_cube.get_world_pose()
+                    self.right_rmpflow.set_end_effector_target(
                         target_position=pose,
-                        target_orientation=orientation,
+                        target_orientation=orientation
                     )
-                    if success:
-                        self.articulation_controller.apply_action(actions)
-                    else:
-                        if counter % 15 == 0:  ## Roughly 500 ms
-                            carb.log_warn("Right IK did not converge to a solution.  No action is being taken.")
-                        counter += 1
+
+                    actions = self.right_articulation_rmpflow.get_next_articulation_action()
+                    self.articulation_controller.apply_action(actions)
+
+                    pose, orientation = self.left_cube.get_world_pose()
+                    self.left_rmpflow.set_end_effector_target(
+                        target_position=pose,
+                        target_orientation=orientation
+                    )
+
+                    actions = self.left_articulation_rmpflow.get_next_articulation_action()
+                    self.articulation_controller.apply_action(actions)
+
 
         # Cleanup
         self.timeline.stop()
@@ -136,33 +165,29 @@ class Subscriber(Node):
         import_config.import_inertia_tensor = False
         import_config.fix_base = True
         import_config.distance_scale = 1
-        import_config.self_collision = True
         # Get the urdf file path
 
-        
-        self.file_name = "/home/ubb/Documents/isaac_sim/src/urdfs/ur_t42.urdf"
+        self.urdf_path = (
+            "/home/ubb/Documents/baxter-stack/ROS2/src/baxter_common_ros2/baxter_description/urdf/baxter.urdf"
+        )
         # Finally import the robot
-        result, self.ur_t42 = omni.kit.commands.execute(
-            "URDFParseAndImportFile", urdf_path=self.file_name, import_config=import_config
+        result, self.baxter = omni.kit.commands.execute(
+            "URDFParseAndImportFile", urdf_path=self.urdf_path, import_config=import_config
         )
 
-        self.ur_t42_robot = self.ros_world.scene.add(Robot(prim_path=self.ur_t42, name="ur_t42"))
-        # my_task = FollowTarget(name="follow_target_task", ur10_prim_path=self.ur_t42,
-        #                        ur10_robot_name="ur_t42", target_name="target")
+        self.baxter_robot = self.ros_world.scene.add(Robot(prim_path=self.baxter, name="baxter"))
+        # my_task = FollowTarget(name="follow_target_task", ur10_prim_path=self.baxter,
+        #                        ur10_robot_name="baxter", target_name="target")
 
         # self.ros_world.add_task(my_task)
 
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
-
         self.stage = simulation_app.context.get_stage()
         table = self.stage.GetPrimAtPath("/Root/table_low_327")
         table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
         table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
         table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(0.7,0.6,1.15))
-
-
-        # self._controller = RMPFlowController(name="target_follower_controller", robot_articulation=self.ur_t42_robot)
 
         self.create_action_graph()
 
@@ -199,50 +224,81 @@ class Subscriber(Node):
             print(e)
 
         # Setting the /Franka target prim to Subscribe JointState node
-        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.ur_t42])
+        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.baxter])
 
         # Setting the /Franka target prim to Publish JointState node
-        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.ur_t42])
+        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.baxter])
 
         # Setting the /Franka target prim to Publish Transform Tree node
         set_target_prims(
-            primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.ur_t42]
+            primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.baxter]
         )
 
         simulation_app.update()
 
     def setup_ik(self):
 
-        self.gripper = ArticulationGripper(
-            gripper_dof_names=["swivel_2_to_finger_2_1", "finger_2_1_to_finger_2_2", "swivel_1_to_finger_1_1", "finger_1_1_to_finger_1_2"],
-            gripper_closed_position=[1.57,0.785,1.57,0.785],
-            gripper_open_position=[0.0, 0.0, 0.0, 0.0],
+        self.left_gripper = ArticulationGripper(
+            gripper_dof_names=["l_gripper_l_finger_joint", "l_gripper_r_finger_joint"],
+            gripper_closed_position=[0.0, 0.0],
+            gripper_open_position=[0.020833, -0.020833],
         )
-        self.gripper.initialize(self.ur_t42, self.ur_t42_robot.get_articulation_controller())
+        self.left_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
 
-
-        self.kinematics_solver = LulaKinematicsSolver(
-            robot_description_path="/home/ubb/Documents/VR_galactic/src/ur_isaac/config/ur3_robot_description.yaml",
-            urdf_path=self.file_name,
+        self.right_gripper = ArticulationGripper(
+            gripper_dof_names=["r_gripper_l_finger_joint", "r_gripper_r_finger_joint"],
+            gripper_closed_position=[0.0, 0.0],
+            gripper_open_position=[0.020833, -0.020833],
         )
+        self.right_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
 
-        self.end_effector_name = "t42_base_link"
-        self.articulation_kinematics_solver = ArticulationKinematicsSolver(
-            self.ur_t42_robot, self.kinematics_solver, self.end_effector_name
+        self.mg_extension_path = get_extension_path_from_name("omni.isaac.motion_generation")
+        self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
+
+        rmp_config_dir = os.path.join("/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow")
+
+        #Initialize an RmpFlow object
+        self.right_rmpflow = RmpFlow(
+            robot_description_path = os.path.join(rmp_config_dir,"right_robot_descriptor.yaml"),
+            urdf_path = self.urdf_path,
+            rmpflow_config_path = os.path.join(rmp_config_dir,"baxter_rmpflow_common.yaml"),
+            end_effector_frame_name = "right_gripper", #This frame name must be present in the URDF
+            evaluations_per_frame = 5
+        )
+        self.left_rmpflow = RmpFlow(
+            robot_description_path = os.path.join(rmp_config_dir,"left_robot_descriptor.yaml"),
+            urdf_path = self.urdf_path,
+            rmpflow_config_path = os.path.join(rmp_config_dir,"baxter_rmpflow_common.yaml"),
+            end_effector_frame_name = "left_gripper", #This frame name must be present in the URDF
+            evaluations_per_frame = 5
         )
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
-        self.cube = VisualCuboid(
-            "/World/cube",
+        self.right_cube = VisualCuboid(
+            "/World/right_cube",
             position=np.array([0.8, -0.1, 0.1]),
             orientation=np.array([0,-1, 0, 0]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
 
-        self.articulation_controller = self.ur_t42_robot.get_articulation_controller()
+        self.left_cube = VisualCuboid(
+            "/World/left_cube",
+            position=np.array([0.8, 0.1, 0.1]),
+            orientation=np.array([0,-1,0,0]),
+            size=np.array([0.05, 0.05, 0.05]),
+            color=np.array([0, 0, 1]),
+        )
+        physics_dt = 1/60
+        self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.right_rmpflow, physics_dt)
+        self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.left_rmpflow, physics_dt)
+
+        self.right_rmpflow.visualize_collision_spheres()
+        self.left_rmpflow.visualize_collision_spheres()
+
+        self.articulation_controller = self.baxter_robot.get_articulation_controller()
+        self.articulation_controller.set_gains(kps=1000, kds=10000 )
         # print(self.articulation_controller._articulation_view.dof_names)
-        
 
 
 if __name__ == "__main__":

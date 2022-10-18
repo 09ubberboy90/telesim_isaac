@@ -11,14 +11,13 @@ import omni.graph.core as og
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
 from omni.isaac.core.objects.cuboid import VisualCuboid
-from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import disable_extension, enable_extension
-from omni.isaac.core.utils.prims import delete_prim
-from omni.isaac.core.utils.stage import add_reference_to_stage, is_stage_loading
+from omni.isaac.core.utils.stage import is_stage_loading
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
 from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.isaac.motion_generation.lula import RmpFlow
+from omni.usd import Gf
 
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
@@ -156,21 +155,10 @@ class Subscriber(Node):
 
         self.stage = simulation_app.context.get_stage()
         table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        print(table)
-        # delete_prim("/Root/table_low_327")
+        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
+        table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
+        table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(0.7,0.6,1.15))
 
-        # self.franka_table_usd = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
-        # add_reference_to_stage(
-        #     usd_path=self.franka_table_usd,
-        #     prim_path="/World/table",
-        # )
-        # self.table = XFormPrim(
-        #     prim_path="/World/table",
-        #     name="table",
-        #     position=np.array([0.0, 0.0, -0.75]),
-        #     orientation=np.array([0.7073883, 0, 0, 0.7068252]),
-        #     scale=np.array([0.7, 0.6, 1.15]),
-        # )  # w,x,y,z
 
         self.create_action_graph()
 
