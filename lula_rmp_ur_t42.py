@@ -139,7 +139,7 @@ class Subscriber(Node):
         import_config.self_collision = True
         # Get the urdf file path
 
-        self.urdf_path = "/home/ubb/Documents/isaac_sim/src/urdfs/ur_t42.urdf"
+        self.urdf_path = "/home/ubb/Documents/VR_galactic/src/ur_isaac/urdfs/ur_t42.urdf"
         # Finally import the robot
         result, self.ur_t42 = omni.kit.commands.execute(
             "URDFParseAndImportFile", urdf_path=self.urdf_path, import_config=import_config
