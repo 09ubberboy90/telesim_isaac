@@ -11,7 +11,7 @@ import omni
 import omni.graph.core as og
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
-from omni.isaac.core.objects.cuboid import VisualCuboid
+from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
 from omni.isaac.core.utils.stage import is_stage_loading
@@ -111,6 +111,9 @@ class Subscriber(Node):
                     self.left_gripper.set_positions(self.left_gripper.closed_position)
                 else:
                     self.left_gripper.set_positions(self.left_gripper.open_position)
+                #Query the current obstacle position
+                self.right_rmpflow.update_world()
+                self.left_rmpflow.update_world()
 
                 if self.tracking_enabled:
 
@@ -184,10 +187,10 @@ class Subscriber(Node):
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
         self.stage = simulation_app.context.get_stage()
-        table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
-        table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
-        table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(0.7,0.6,1.15))
+        self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
+        self.table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
+        self.table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
+        self.table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(0.7,0.6,1.15))
 
         self.create_action_graph()
 
@@ -294,11 +297,14 @@ class Subscriber(Node):
         self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.left_rmpflow, physics_dt)
 
         self.right_rmpflow.visualize_collision_spheres()
-        self.left_rmpflow.visualize_collision_spheres()
+        # self.left_rmpflow.visualize_collision_spheres()
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
         self.articulation_controller.set_gains(kps=1000, kds=10000 )
         # print(self.articulation_controller._articulation_view.dof_names)
+        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.6,0.0,-0.23]), size=np.array([0.64,1.16,0.07]))
+        self.right_rmpflow.add_obstacle(fake_table)
+        self.left_rmpflow.add_obstacle(fake_table)
 
 
 if __name__ == "__main__":
