@@ -10,7 +10,7 @@ import omni
 import omni.graph.core as og
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
-from omni.isaac.core.objects.cuboid import VisualCuboid
+from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import disable_extension, enable_extension
 from omni.isaac.core.utils.stage import is_stage_loading
@@ -45,7 +45,7 @@ class Subscriber(Node):
         self.setup_ik()
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_cube_callback, 10)
-        self.trigger_sub = self.create_subscription(JointState, "gripper_joint_states", self.trigger_callback, 10)
+        self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.trigger_callback, 10)
         self.timeline = omni.timeline.get_timeline_interface()
         self.cube_pose = None
         self.trigger = False
@@ -90,6 +90,7 @@ class Subscriber(Node):
                     self.gripper.set_positions(self.gripper.closed_position)
                 else:
                     self.gripper.set_positions(self.gripper.open_position)
+                self.rmpflow.update_world()
 
                 if self.tracking_enabled:
 
@@ -135,7 +136,7 @@ class Subscriber(Node):
         import_config.import_inertia_tensor = False
         import_config.fix_base = True
         import_config.distance_scale = 1
-        import_config.self_collision = False
+        import_config.self_collision = True
         # Get the urdf file path
 
         self.urdf_path = "/home/ubb/Documents/isaac_sim/src/urdfs/ur_t42.urdf"
@@ -155,9 +156,9 @@ class Subscriber(Node):
 
         self.stage = simulation_app.context.get_stage()
         table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
+        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.36,0.0,-0.77))
         table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
-        table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(0.7,0.6,1.15))
+        table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.8,1.15))
 
 
         self.create_action_graph()
@@ -250,6 +251,8 @@ class Subscriber(Node):
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
+        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.36,0.0,-0.03]), size=np.array([0.95,1.6,0.07]))
+        self.rmpflow.add_obstacle(fake_table)
 
         # print(self.articulation_controller._articulation_view.dof_names)
 

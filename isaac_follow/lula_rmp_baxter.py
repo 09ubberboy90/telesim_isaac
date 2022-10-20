@@ -296,7 +296,7 @@ class Subscriber(Node):
         self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.right_rmpflow, physics_dt)
         self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.left_rmpflow, physics_dt)
 
-        self.right_rmpflow.visualize_collision_spheres()
+        # self.right_rmpflow.visualize_collision_spheres()
         # self.left_rmpflow.visualize_collision_spheres()
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
