@@ -15,6 +15,7 @@ from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
 from omni.isaac.core.utils.stage import is_stage_loading
+from omni.isaac.core.utils.types import ArticulationAction 
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
 from omni.isaac.motion_generation.lula import RmpFlow
 from omni.isaac.motion_generation import ArticulationMotionPolicy
@@ -35,7 +36,7 @@ from geometry_msgs.msg import Pose
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
 from std_msgs.msg import Bool
-
+from sensor_msgs.msg import JointState
 
 class Subscriber(Node):
     def __init__(self):
@@ -48,19 +49,32 @@ class Subscriber(Node):
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
+        self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
         self.trigger = defaultdict(lambda: False)
+        self.global_tracking = True
+        self.robot_state = {}
 
     def enable_tracking(self, data: Bool):
-        self.tracking_enabled["right"] = data.data
-        self.tracking_enabled["left"] = data.data
-
+        self.global_tracking = data.data
+    
+    def get_robot_state(self, data:JointState):
+        for idx, el in enumerate(data.name):
+            self.robot_state[el] = data.position[idx]
+        ## Duplicate gripper as they're set to mimic
+        try:
+            self.robot_state["l_gripper_r_finger_joint"] = self.robot_state["l_gripper_l_finger_joint"]
+            self.robot_state["r_gripper_r_finger_joint"] = self.robot_state["r_gripper_l_finger_joint"]
+        except:
+            pass
     def move_right_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
         if data.position.x > 3000:
-            self.tracking_enabled["right"] = not self.tracking_enabled["right"]
+            self.tracking_enabled["right"] = False
+        else:
+            self.tracking_enabled["right"] = True
 
         self.right_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
@@ -70,7 +84,9 @@ class Subscriber(Node):
     def move_left_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
         if data.position.x > 3000:
-            self.tracking_enabled["left"] = not self.tracking_enabled["left"]
+            self.tracking_enabled["left"] = False
+        else:
+            self.tracking_enabled["left"] = True
 
         self.left_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
@@ -88,6 +104,16 @@ class Subscriber(Node):
     def rclpy_spinner(self, event):
         while not event.is_set():
             rclpy.spin_once(self)
+
+    def create_robot_articulation_state(self, controler:ArticulationMotionPolicy = None) -> ArticulationAction:
+        position = []
+        for name in self.articulation_controller._articulation_view.dof_names:
+
+            position.append(self.robot_state[name])
+        if controler is not None:
+            return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
+        else:
+            return ArticulationAction(joint_positions=position)
 
     def run_simulation(self):
         # Track any movements of the robot base
@@ -119,30 +145,36 @@ class Subscriber(Node):
                 else:
                     self.left_gripper.set_positions(self.left_gripper.open_position)
                 #Query the current obstacle position
+                if self.global_tracking:
+                    if self.tracking_enabled["right"]:
 
-                if self.tracking_enabled["right"]:
+                        self.right_rmpflow.update_world()
+                        pose, orientation = self.right_cube.get_world_pose()
+                        self.right_rmpflow.set_end_effector_target(
+                            target_position=pose,
+                            target_orientation=orientation
+                        )
 
-                    self.right_rmpflow.update_world()
-                    pose, orientation = self.right_cube.get_world_pose()
-                    self.right_rmpflow.set_end_effector_target(
-                        target_position=pose,
-                        target_orientation=orientation
-                    )
+                        actions = self.right_articulation_rmpflow.get_next_articulation_action()
+                        self.articulation_controller.apply_action(actions)
+                    else:
+                        self.articulation_controller.apply_action(self.create_robot_articulation_state(self.right_articulation_rmpflow))
+                    if self.tracking_enabled["left"]:
+                        self.left_rmpflow.update_world()
+                        pose, orientation = self.left_cube.get_world_pose()
+                        self.left_rmpflow.set_end_effector_target(
+                            target_position=pose,
+                            target_orientation=orientation
+                        )
 
-                    actions = self.right_articulation_rmpflow.get_next_articulation_action()
-                    self.articulation_controller.apply_action(actions)
-
-                if self.tracking_enabled["left"]:
-                    self.left_rmpflow.update_world()
-                    pose, orientation = self.left_cube.get_world_pose()
-                    self.left_rmpflow.set_end_effector_target(
-                        target_position=pose,
-                        target_orientation=orientation
-                    )
-
-                    actions = self.left_articulation_rmpflow.get_next_articulation_action()
-                    self.articulation_controller.apply_action(actions)
-
+                        actions = self.left_articulation_rmpflow.get_next_articulation_action()
+                        self.articulation_controller.apply_action(actions)
+                    else:
+                        self.articulation_controller.apply_action(self.create_robot_articulation_state(self.left_articulation_rmpflow))
+                else:
+                    self.articulation_controller.apply_action(self.create_robot_articulation_state())
+                    # self.articulation_controller.apply_action(self.create_robot_articulation_state(self.left_articulation_rmpflow))
+                
 
         # Cleanup
         self.timeline.stop()
@@ -194,6 +226,7 @@ class Subscriber(Node):
 
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
+
         self.stage = simulation_app.context.get_stage()
         self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
         self.table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
@@ -211,13 +244,11 @@ class Subscriber(Node):
                         ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
                         ("ReadSystemTime", "omni.isaac.core_nodes.IsaacReadSystemTime"),
                         ("PublishJointState", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
-                        ("SubscribeJointState", "omni.isaac.ros2_bridge.ROS2SubscribeJointState"),
                         ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                         # ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
                     ],
                     og.Controller.Keys.CONNECT: [
                         ("OnPlaybackTick.outputs:tick", "PublishJointState.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "SubscribeJointState.inputs:execIn"),
                         ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
                         # ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
                         ("ReadSystemTime.outputs:systemTime", "PublishJointState.inputs:timeStamp"),
@@ -226,7 +257,6 @@ class Subscriber(Node):
                     ],
                     og.Controller.Keys.SET_VALUES: [
                         ("PublishJointState.inputs:topicName", "joint_states_sim"),
-                        ("SubscribeJointState.inputs:topicName", "robot/joint_states"),
                         ("PublishTF.inputs:topicName", "tf_sim"),
                     ],
                 },
@@ -234,8 +264,7 @@ class Subscriber(Node):
         except Exception as e:
             print(e)
 
-        # Setting the /Franka target prim to Subscribe JointState node
-        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.baxter])
+        
 
         # Setting the /Franka target prim to Publish JointState node
         set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.baxter])
@@ -308,7 +337,8 @@ class Subscriber(Node):
         # self.left_rmpflow.visualize_collision_spheres()
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
-        self.articulation_controller.set_gains(kps=1000, kds=10000 )
+        self.articulation_controller.set_gains(kps=2000000, kds=400000 )
+        # self.articulation_controller.set_gains(kps=4200, kds=840)
         # print(self.articulation_controller._articulation_view.dof_names)
         fake_table = FixedCuboid("/World/fake_table", position=np.array([0.6,0.0,-0.23]), size=np.array([0.64,1.16,0.07]))
         self.right_rmpflow.add_obstacle(fake_table)
