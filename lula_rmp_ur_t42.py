@@ -55,6 +55,9 @@ class Subscriber(Node):
 
     def move_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
+        if data.position.x > 3000:
+            self.tracking_enabled = not self.tracking_enabled
+
         self.cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
             (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
@@ -139,7 +142,7 @@ class Subscriber(Node):
         import_config.self_collision = True
         # Get the urdf file path
 
-        self.urdf_path = "/home/ubb/Documents/VR_galactic/src/ur_isaac/urdfs/ur_t42.urdf"
+        self.urdf_path = "/home/ubb/Documents/UR_T42/src/ur_isaac/urdfs/ur_t42.urdf"
         # Finally import the robot
         result, self.ur_t42 = omni.kit.commands.execute(
             "URDFParseAndImportFile", urdf_path=self.urdf_path, import_config=import_config
@@ -156,7 +159,7 @@ class Subscriber(Node):
 
         self.stage = simulation_app.context.get_stage()
         table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.36,0.0,-0.77))
+        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.36,0.0,-1.01))
         table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
         table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.8,1.15))
 
@@ -251,7 +254,7 @@ class Subscriber(Node):
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
-        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.36,0.0,-0.03]), size=np.array([0.95,1.6,0.07]))
+        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.6,0.4,-0.27]), size=np.array([0.95,1.6,0.07]))
         self.rmpflow.add_obstacle(fake_table)
 
         # print(self.articulation_controller._articulation_view.dof_names)

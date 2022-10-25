@@ -40,7 +40,7 @@ from std_msgs.msg import Bool
 class Subscriber(Node):
     def __init__(self):
         super().__init__("isaac_sim_loop")
-        self.tracking_enabled = True
+        self.tracking_enabled = defaultdict(lambda: True)
         self.setup_scene()
         self.setup_ik()
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
@@ -54,10 +54,14 @@ class Subscriber(Node):
         self.trigger = defaultdict(lambda: False)
 
     def enable_tracking(self, data: Bool):
-        self.tracking_enabled = data.data
+        self.tracking_enabled["right"] = data.data
+        self.tracking_enabled["left"] = data.data
 
     def move_right_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
+        if data.position.x > 3000:
+            self.tracking_enabled["right"] = not self.tracking_enabled["right"]
+
         self.right_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
             (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
@@ -65,6 +69,9 @@ class Subscriber(Node):
         )
     def move_left_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
+        if data.position.x > 3000:
+            self.tracking_enabled["left"] = not self.tracking_enabled["left"]
+
         self.left_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
             # (data.orientation.w, -data.orientation.z, -data.orientation.x, -data.orientation.y),
@@ -112,11 +119,10 @@ class Subscriber(Node):
                 else:
                     self.left_gripper.set_positions(self.left_gripper.open_position)
                 #Query the current obstacle position
-                self.right_rmpflow.update_world()
-                self.left_rmpflow.update_world()
 
-                if self.tracking_enabled:
+                if self.tracking_enabled["right"]:
 
+                    self.right_rmpflow.update_world()
                     pose, orientation = self.right_cube.get_world_pose()
                     self.right_rmpflow.set_end_effector_target(
                         target_position=pose,
@@ -126,6 +132,8 @@ class Subscriber(Node):
                     actions = self.right_articulation_rmpflow.get_next_articulation_action()
                     self.articulation_controller.apply_action(actions)
 
+                if self.tracking_enabled["left"]:
+                    self.left_rmpflow.update_world()
                     pose, orientation = self.left_cube.get_world_pose()
                     self.left_rmpflow.set_end_effector_target(
                         target_position=pose,
