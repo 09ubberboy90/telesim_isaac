@@ -15,7 +15,7 @@ from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
 from omni.isaac.core.utils.stage import is_stage_loading
-from omni.isaac.core.utils.types import ArticulationAction 
+from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
 from omni.isaac.motion_generation.lula import RmpFlow
 from omni.isaac.motion_generation import ArticulationMotionPolicy
@@ -37,6 +37,8 @@ from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
 from std_msgs.msg import Bool
 from sensor_msgs.msg import JointState
+import pyquaternion as pyq
+
 
 class Subscriber(Node):
     def __init__(self):
@@ -59,8 +61,8 @@ class Subscriber(Node):
 
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
-    
-    def get_robot_state(self, data:JointState):
+
+    def get_robot_state(self, data: JointState):
         for idx, el in enumerate(data.name):
             self.robot_state[el] = data.position[idx]
         ## Duplicate gripper as they're set to mimic
@@ -69,6 +71,7 @@ class Subscriber(Node):
             self.robot_state["r_gripper_r_finger_joint"] = self.robot_state["r_gripper_l_finger_joint"]
         except:
             pass
+
     def move_right_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
         if data.position.x > 3000:
@@ -76,11 +79,18 @@ class Subscriber(Node):
         else:
             self.tracking_enabled["right"] = True
 
+        mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
+        offset_rot = pyq.Quaternion(w=0.707, x=0.707, y=0.0, z=0.0)  ## handles sideway instead of up
+
+        q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
+        new_quat = mul_rot * q1
+        new_quat *= offset_rot
+
         self.right_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
-            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
-
+            (new_quat.w, new_quat.x, new_quat.y, new_quat.z),
         )
+
     def move_left_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
         if data.position.x > 3000:
@@ -88,16 +98,21 @@ class Subscriber(Node):
         else:
             self.tracking_enabled["left"] = True
 
+        mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
+        offset_rot = pyq.Quaternion(w=0.707, x=0.707, y=0.0, z=0.0)  ## handles sideway instead of up
+
+        q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
+        new_quat = mul_rot * q1
+        new_quat *= offset_rot
+
         self.left_cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
-            # (data.orientation.w, -data.orientation.z, -data.orientation.x, -data.orientation.y),
-            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
-
+            (new_quat.w, new_quat.x, new_quat.y, new_quat.z),
         )
 
     def right_trigger_callback(self, data: Bool):
         self.trigger["right"] = data.data
-    
+
     def left_trigger_callback(self, data: Bool):
         self.trigger["left"] = data.data
 
@@ -105,11 +120,15 @@ class Subscriber(Node):
         while not event.is_set():
             rclpy.spin_once(self)
 
-    def create_robot_articulation_state(self, controler:ArticulationMotionPolicy = None) -> ArticulationAction:
+    def create_robot_articulation_state(self, controler: ArticulationMotionPolicy = None) -> ArticulationAction:
         position = []
         for name in self.articulation_controller._articulation_view.dof_names:
-
-            position.append(self.robot_state[name])
+            try:
+                position.append(self.robot_state[name])
+            except:
+                pass
+        if len(position) == 0:
+            return ArticulationAction(joint_positions=position)
         if controler is not None:
             return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
         else:
@@ -144,37 +163,34 @@ class Subscriber(Node):
                     self.left_gripper.set_positions(self.left_gripper.closed_position)
                 else:
                     self.left_gripper.set_positions(self.left_gripper.open_position)
-                #Query the current obstacle position
+                # Query the current obstacle position
                 if self.global_tracking:
                     if self.tracking_enabled["right"]:
 
                         self.right_rmpflow.update_world()
                         pose, orientation = self.right_cube.get_world_pose()
-                        self.right_rmpflow.set_end_effector_target(
-                            target_position=pose,
-                            target_orientation=orientation
-                        )
+                        self.right_rmpflow.set_end_effector_target(target_position=pose, target_orientation=orientation)
 
                         actions = self.right_articulation_rmpflow.get_next_articulation_action()
                         self.articulation_controller.apply_action(actions)
                     else:
-                        self.articulation_controller.apply_action(self.create_robot_articulation_state(self.right_articulation_rmpflow))
+                        self.articulation_controller.apply_action(
+                            self.create_robot_articulation_state(self.right_articulation_rmpflow)
+                        )
                     if self.tracking_enabled["left"]:
                         self.left_rmpflow.update_world()
                         pose, orientation = self.left_cube.get_world_pose()
-                        self.left_rmpflow.set_end_effector_target(
-                            target_position=pose,
-                            target_orientation=orientation
-                        )
+                        self.left_rmpflow.set_end_effector_target(target_position=pose, target_orientation=orientation)
 
                         actions = self.left_articulation_rmpflow.get_next_articulation_action()
                         self.articulation_controller.apply_action(actions)
                     else:
-                        self.articulation_controller.apply_action(self.create_robot_articulation_state(self.left_articulation_rmpflow))
+                        self.articulation_controller.apply_action(
+                            self.create_robot_articulation_state(self.left_articulation_rmpflow)
+                        )
                 else:
                     self.articulation_controller.apply_action(self.create_robot_articulation_state())
                     # self.articulation_controller.apply_action(self.create_robot_articulation_state(self.left_articulation_rmpflow))
-                
 
         # Cleanup
         self.timeline.stop()
@@ -229,9 +245,9 @@ class Subscriber(Node):
 
         self.stage = simulation_app.context.get_stage()
         self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        self.table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.6,0.034,-0.975))
-        self.table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
-        self.table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(0.7,0.6,1.15))
+        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.034, -0.975))
+        self.table.GetAttribute("xformOp:rotateZYX").Set(Gf.Vec3f(0, 0, 90))
+        self.table.GetAttribute("xformOp:scale").Set(Gf.Vec3f(0.7, 0.6, 1.15))
 
         self.create_action_graph()
 
@@ -264,8 +280,6 @@ class Subscriber(Node):
         except Exception as e:
             print(e)
 
-        
-
         # Setting the /Franka target prim to Publish JointState node
         set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.baxter])
 
@@ -297,27 +311,27 @@ class Subscriber(Node):
 
         rmp_config_dir = os.path.join("/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow")
 
-        #Initialize an RmpFlow object
+        # Initialize an RmpFlow object
         self.right_rmpflow = RmpFlow(
-            robot_description_path = os.path.join(rmp_config_dir,"right_robot_descriptor.yaml"),
-            urdf_path = self.urdf_path,
-            rmpflow_config_path = os.path.join(rmp_config_dir,"baxter_rmpflow_common.yaml"),
-            end_effector_frame_name = "right_gripper", #This frame name must be present in the URDF
-            evaluations_per_frame = 5
+            robot_description_path=os.path.join(rmp_config_dir, "right_robot_descriptor.yaml"),
+            urdf_path=self.urdf_path,
+            rmpflow_config_path=os.path.join(rmp_config_dir, "baxter_rmpflow_common.yaml"),
+            end_effector_frame_name="right_gripper",  # This frame name must be present in the URDF
+            evaluations_per_frame=5,
         )
         self.left_rmpflow = RmpFlow(
-            robot_description_path = os.path.join(rmp_config_dir,"left_robot_descriptor.yaml"),
-            urdf_path = self.urdf_path,
-            rmpflow_config_path = os.path.join(rmp_config_dir,"baxter_rmpflow_common.yaml"),
-            end_effector_frame_name = "left_gripper", #This frame name must be present in the URDF
-            evaluations_per_frame = 5
+            robot_description_path=os.path.join(rmp_config_dir, "left_robot_descriptor.yaml"),
+            urdf_path=self.urdf_path,
+            rmpflow_config_path=os.path.join(rmp_config_dir, "baxter_rmpflow_common.yaml"),
+            end_effector_frame_name="left_gripper",  # This frame name must be present in the URDF
+            evaluations_per_frame=5,
         )
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/right_cube",
             position=np.array([0.8, -0.1, 0.1]),
-            orientation=np.array([0,-1, 0, 0]),
+            orientation=np.array([0, -1, 0, 0]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
@@ -325,22 +339,24 @@ class Subscriber(Node):
         self.left_cube = VisualCuboid(
             "/World/left_cube",
             position=np.array([0.8, 0.1, 0.1]),
-            orientation=np.array([0,-1,0,0]),
+            orientation=np.array([0, -1, 0, 0]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
-        physics_dt = 1/60
-        self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.right_rmpflow, physics_dt)
-        self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot,self.left_rmpflow, physics_dt)
+        physics_dt = 1 / 60
+        self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt)
+        self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt)
 
         # self.right_rmpflow.visualize_collision_spheres()
         # self.left_rmpflow.visualize_collision_spheres()
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
-        self.articulation_controller.set_gains(kps=2000000, kds=400000 )
+        self.articulation_controller.set_gains(kps=2000000, kds=400000)
         # self.articulation_controller.set_gains(kps=4200, kds=840)
         # print(self.articulation_controller._articulation_view.dof_names)
-        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.6,0.0,-0.23]), size=np.array([0.64,1.16,0.07]))
+        fake_table = FixedCuboid(
+            "/World/fake_table", position=np.array([0.6, 0.0, -0.23]), size=np.array([0.64, 1.16, 0.07])
+        )
         self.right_rmpflow.add_obstacle(fake_table)
         self.left_rmpflow.add_obstacle(fake_table)
 
