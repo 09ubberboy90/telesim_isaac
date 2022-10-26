@@ -32,7 +32,7 @@ import numpy as np
 
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
 from std_msgs.msg import Bool
@@ -52,15 +52,41 @@ class Subscriber(Node):
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
+        self.cube_sub = self.create_subscription(PoseArray, "detected_cubes", self.get_cubes, 10)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
         self.trigger = defaultdict(lambda: False)
         self.global_tracking = True
         self.robot_state = {}
+        self.cubes_pose = {}
+        self.existing_cubes = {}
+
 
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
+
+    def get_cubes(self, data:PoseArray):
+        for pose in data.poses:
+            self.cubes_pose[data.header.frame_id] = (
+                (-pose.position.z, pose.position.x, -pose.position.y),
+                (pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z),
+            )
+
+    def create_cubes(self):
+        for name, pose in self.cubes_pose.items():
+            if name not in self.existing_cubes.keys():
+                self.existing_cubes[name] = VisualCuboid(
+                    f"/World/{name}",
+                    position=pose[0],
+                    orientation=pose[1],
+                    size=np.array([0.05, 0.05, 0.05]),
+                    color=np.array([1, 0, 0]),
+                )
+            else:
+                self.existing_cubes[name].set_world_pose(*pose)
+
+
 
     def get_robot_state(self, data: JointState):
         for idx, el in enumerate(data.name):
@@ -148,6 +174,8 @@ class Subscriber(Node):
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
+                
+                self.create_cubes()
 
                 if self.left_cube_pose is not None:
                     self.left_cube.set_world_pose(*self.left_cube_pose)
