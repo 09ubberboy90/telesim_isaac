@@ -14,9 +14,11 @@ from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import disable_extension, enable_extension
 from omni.isaac.core.utils.stage import is_stage_loading
+from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
 from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.isaac.motion_generation.lula import RmpFlow
+from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.usd import Gf
 
 disable_extension("omni.isaac.ros_bridge")
@@ -30,12 +32,13 @@ import numpy as np
 
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
+import pyquaternion as pyq
 
 class Subscriber(Node):
     def __init__(self):
@@ -46,22 +49,71 @@ class Subscriber(Node):
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.trigger_callback, 10)
+        self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
+        self.cube_sub = self.create_subscription(PoseArray, "detected_cubes", self.get_cubes, 10)
+
         self.timeline = omni.timeline.get_timeline_interface()
         self.cube_pose = None
         self.trigger = False
+        self.robot_state = {}
+        self.cubes_pose = {}
+        self.existing_cubes = {}
 
     def enable_tracking(self, data: Bool):
         self.tracking_enabled = data.data
 
+    def get_cubes(self, data:PoseArray):
+        for pose in data.poses:
+            self.cubes_pose[data.header.frame_id] = (
+                (pose.position.x, pose.position.y, pose.position.z),
+                (pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z),
+            )
+
+    def create_cubes(self):
+        for name, pose in self.cubes_pose.items():
+            if name not in self.existing_cubes.keys():
+                self.existing_cubes[name] = VisualCuboid(
+                    f"/World/{name}",
+                    position=pose[0],
+                    orientation=pose[1],
+                    size=np.array([0.05, 0.05, 0.05]),
+                    color=np.array([1, 0, 0]),
+                )
+            else:
+                self.existing_cubes[name].set_world_pose(*pose)
+
+
+
+    def get_robot_state(self, data: JointState):
+        for idx, el in enumerate(data.name):
+            self.robot_state[el] = data.position[idx]
+        ## Duplicate gripper as they're set to mimic
+        try:
+            self.robot_state["l_gripper_r_finger_joint"] = self.robot_state["l_gripper_l_finger_joint"]
+            self.robot_state["r_gripper_r_finger_joint"] = self.robot_state["r_gripper_l_finger_joint"]
+        except:
+            pass
+
+
     def move_cube_callback(self, data: Pose):
         # Make sure to respect the parity (Levi-Civita symbol)
         if data.position.x > 3000:
-            self.tracking_enabled = not self.tracking_enabled
+            self.tracking_enabled = False
+        else:
+            self.tracking_enabled = True
+
+        mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
+        offset_rot = pyq.Quaternion(w=0.707, x=0.707, y=0.0, z=0.0)  ## handles sideway instead of up
+
+        q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
+        new_quat = mul_rot * q1
+        new_quat *= offset_rot
 
         self.cube_pose = (
             (-data.position.x, data.position.z, data.position.y),
-            (-data.orientation.w, -data.orientation.z, data.orientation.x, -data.orientation.y),
+            (new_quat.w, new_quat.x, new_quat.y, new_quat.z),
         )
+
 
     def trigger_callback(self, data: Bool):
         self.trigger = data.data
@@ -69,6 +121,20 @@ class Subscriber(Node):
     def rclpy_spinner(self, event):
         while not event.is_set():
             rclpy.spin_once(self)
+
+    def create_robot_articulation_state(self, controler: ArticulationMotionPolicy = None) -> ArticulationAction:
+        position = []
+        for name in self.articulation_controller._articulation_view.dof_names:
+            try:
+                position.append(self.robot_state[name])
+            except:
+                pass
+        if len(position) == 0:
+            return ArticulationAction(joint_positions=position)
+        if controler is not None:
+            return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
+        else:
+            return ArticulationAction(joint_positions=position)
 
     def run_simulation(self):
         # Track any movements of the robot base
@@ -85,6 +151,7 @@ class Subscriber(Node):
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
+                self.create_cubes()
 
                 if self.cube_pose is not None:
                     self.cube.set_world_pose(*self.cube_pose)
@@ -94,7 +161,6 @@ class Subscriber(Node):
                 else:
                     self.gripper.set_positions(self.gripper.open_position)
                 self.rmpflow.update_world()
-
                 if self.tracking_enabled:
 
                     pose, orientation = self.cube.get_world_pose()
@@ -102,10 +168,10 @@ class Subscriber(Node):
                         target_position=pose,
                         target_orientation=orientation,
                     )
-                    self.rmpflow.update_world()
-
                     actions = self.articulation_rmpflow.get_next_articulation_action()
                     self.articulation_controller.apply_action(actions)
+                else:
+                    self.articulation_controller.apply_action(self.create_robot_articulation_state())
 
         # Cleanup
         self.timeline.stop()
@@ -142,7 +208,7 @@ class Subscriber(Node):
         import_config.self_collision = True
         # Get the urdf file path
 
-        self.urdf_path = "/home/ubb/Documents/UR_T42/src/ur_isaac/urdfs/ur_t42.urdf"
+        self.urdf_path = "/home/ubb/Documents/UR_T42/ur_isaac/urdfs/ur_t42.urdf"
         # Finally import the robot
         result, self.ur_t42 = omni.kit.commands.execute(
             "URDFParseAndImportFile", urdf_path=self.urdf_path, import_config=import_config
@@ -225,7 +291,7 @@ class Subscriber(Node):
         )
         self.gripper.initialize(self.ur_t42, self.ur_t42_robot.get_articulation_controller())
 
-        self.rmp_config_dir = "/home/ubb/Documents/VR_galactic/src/ur_isaac/config"
+        self.rmp_config_dir = "/home/ubb/Documents/UR_T42/ur_isaac/config"
 
         self.rmpflow = RmpFlow(
             robot_description_path=os.path.join(self.rmp_config_dir, "ur3_t42_robot_description.yaml"),
@@ -236,7 +302,7 @@ class Subscriber(Node):
         )
 
         # Uncomment this line to visualize the collision spheres in the robot_description YAML file
-        self.rmpflow.visualize_collision_spheres()
+        # self.rmpflow.visualize_collision_spheres()
         # rmpflow.set_ignore_state_updates(True)
 
         physics_dt = 1 / 60.0
