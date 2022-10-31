@@ -61,6 +61,7 @@ class Subscriber(Node):
         self.robot_state = {}
         self.cubes_pose = {}
         self.existing_cubes = {}
+        # self.rubiks_path = "omniverse://localhost/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
 
 
     def enable_tracking(self, data: Bool):
@@ -69,7 +70,7 @@ class Subscriber(Node):
     def get_cubes(self, data:PoseArray):
         for pose in data.poses:
             self.cubes_pose[data.header.frame_id] = (
-                (-pose.position.z, pose.position.x, -pose.position.y),
+                (pose.position.x, pose.position.y, pose.position.z),
                 (pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z),
             )
 
