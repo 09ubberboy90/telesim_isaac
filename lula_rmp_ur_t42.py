@@ -87,12 +87,6 @@ class Subscriber(Node):
     def get_robot_state(self, data: JointState):
         for idx, el in enumerate(data.name):
             self.robot_state[el] = data.position[idx]
-        ## Duplicate gripper as they're set to mimic
-        try:
-            self.robot_state["l_gripper_r_finger_joint"] = self.robot_state["l_gripper_l_finger_joint"]
-            self.robot_state["r_gripper_r_finger_joint"] = self.robot_state["r_gripper_l_finger_joint"]
-        except:
-            pass
 
 
     def move_cube_callback(self, data: Pose):
@@ -103,7 +97,7 @@ class Subscriber(Node):
             self.tracking_enabled = True
 
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
-        offset_rot = pyq.Quaternion(w=0.707, x=0.707, y=0.0, z=0.0)  ## handles sideway instead of up
+        offset_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=0.707)  ## handles sideway instead of up
 
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
         new_quat = mul_rot * q1
@@ -130,11 +124,11 @@ class Subscriber(Node):
             except:
                 pass
         if len(position) == 0:
-            return ArticulationAction(joint_positions=position)
+            return False, ArticulationAction(joint_positions=position)
         if controler is not None:
-            return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
+            return True, ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
         else:
-            return ArticulationAction(joint_positions=position)
+            return True, ArticulationAction(joint_positions=position)
 
     def run_simulation(self):
         # Track any movements of the robot base
@@ -144,10 +138,8 @@ class Subscriber(Node):
         rclpy_thread.start()
 
         self.timeline.play()
-        robot_base_translation, robot_base_orientation = self.ur_t42_robot.get_world_pose()
         while simulation_app.is_running():
             self.ros_world.step(render=True)
-            # rclpy.spin_once(self, timeout_sec=0.0)
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
@@ -171,7 +163,9 @@ class Subscriber(Node):
                     actions = self.articulation_rmpflow.get_next_articulation_action()
                     self.articulation_controller.apply_action(actions)
                 else:
-                    self.articulation_controller.apply_action(self.create_robot_articulation_state())
+                    success, actions = self.create_robot_articulation_state()
+                    if success:
+                        self.articulation_controller.apply_action(actions)
 
         # Cleanup
         self.timeline.stop()
@@ -208,26 +202,22 @@ class Subscriber(Node):
         import_config.self_collision = True
         # Get the urdf file path
 
-        self.urdf_path = "/home/ubb/Documents/UR_T42/ur_isaac/urdfs/ur_t42.urdf"
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
         # Finally import the robot
         result, self.ur_t42 = omni.kit.commands.execute(
             "URDFParseAndImportFile", urdf_path=self.urdf_path, import_config=import_config
         )
 
         self.ur_t42_robot = self.ros_world.scene.add(Robot(prim_path=self.ur_t42, name="ur_t42"))
-        # my_task = FollowTarget(name="follow_target_task", ur10_prim_path=self.ur_t42,
-        #                        ur10_robot_name="ur_t42", target_name="target")
-
-        # self.ros_world.add_task(my_task)
 
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
 
         self.stage = simulation_app.context.get_stage()
         table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.36,0.0,-1.01))
+        table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.28,0.0,-0.8))
         table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,90))
-        table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.8,1.15))
+        table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.86,1.15))
 
 
         self.create_action_graph()
@@ -291,7 +281,7 @@ class Subscriber(Node):
         )
         self.gripper.initialize(self.ur_t42, self.ur_t42_robot.get_articulation_controller())
 
-        self.rmp_config_dir = "/home/ubb/Documents/UR_T42/ur_isaac/config"
+        self.rmp_config_dir = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config"
 
         self.rmpflow = RmpFlow(
             robot_description_path=os.path.join(self.rmp_config_dir, "ur3_t42_robot_description.yaml"),
@@ -302,15 +292,15 @@ class Subscriber(Node):
         )
 
         # Uncomment this line to visualize the collision spheres in the robot_description YAML file
-        # self.rmpflow.visualize_collision_spheres()
-        # rmpflow.set_ignore_state_updates(True)
+        self.rmpflow.visualize_collision_spheres()
+        self.rmpflow.set_ignore_state_updates(True)
 
         physics_dt = 1 / 60.0
         self.articulation_rmpflow = ArticulationMotionPolicy(self.ur_t42_robot, self.rmpflow, physics_dt)
 
         self.articulation_controller = self.ur_t42_robot.get_articulation_controller()
 
-        self.articulation_controller.set_gains(kps=1000, kds=10000)
+        self.articulation_controller.set_gains(kps=2000000, kds=400000)
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.cube = VisualCuboid(
@@ -320,7 +310,7 @@ class Subscriber(Node):
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
-        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.6,0.4,-0.27]), size=np.array([0.95,1.6,0.07]))
+        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.28,0,-0.04]), size=np.array([0.95,1.6,0.07]))
         self.rmpflow.add_obstacle(fake_table)
 
         # print(self.articulation_controller._articulation_view.dof_names)
