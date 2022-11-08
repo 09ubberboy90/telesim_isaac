@@ -292,8 +292,8 @@ class Subscriber(Node):
         )
 
         # Uncomment this line to visualize the collision spheres in the robot_description YAML file
-        self.rmpflow.visualize_collision_spheres()
-        self.rmpflow.set_ignore_state_updates(True)
+        # self.rmpflow.visualize_collision_spheres()
+        # self.rmpflow.set_ignore_state_updates(True)
 
         physics_dt = 1 / 60.0
         self.articulation_rmpflow = ArticulationMotionPolicy(self.ur_t42_robot, self.rmpflow, physics_dt)
@@ -306,7 +306,7 @@ class Subscriber(Node):
         self.cube = VisualCuboid(
             "/World/cube",
             position=np.array([0.8, -0.1, 0.1]),
-            orientation=np.array([0, -1, 0, 0]),
+            orientation=np.array([-0.5, 0.5, 0.5, 0.5]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )
