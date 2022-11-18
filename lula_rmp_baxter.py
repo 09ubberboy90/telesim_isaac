@@ -11,41 +11,41 @@ import omni
 import omni.graph.core as og
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
-from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
+from omni.isaac.core.objects.cuboid import FixedCuboid, VisualCuboid, DynamicCuboid
 from omni.isaac.core.robots.robot import Robot
-from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
-from omni.isaac.core.utils.stage import is_stage_loading
+from omni.isaac.core.utils.extensions import (disable_extension,
+                                              enable_extension,
+                                              get_extension_path_from_name)
+from omni.isaac.core.utils.stage import is_stage_loading, add_reference_to_stage
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.isaac.motion_generation.lula import RmpFlow
 from omni.isaac.motion_generation import ArticulationMotionPolicy
+from omni.isaac.motion_generation.lula import RmpFlow
+from omni.isaac.core.controllers import BaseGripperController
 from omni.usd import Gf
-
+from omni.isaac.core.prims.xform_prim import XFormPrim
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
 
 simulation_app.update()
 
-from threading import Thread, Event
+from threading import Event, Thread
 
 import numpy as np
-
+import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
 from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
-from std_msgs.msg import Bool
 from sensor_msgs.msg import JointState
-import pyquaternion as pyq
+from std_msgs.msg import Bool
 
 
 class Subscriber(Node):
     def __init__(self):
         super().__init__("isaac_sim_loop")
         self.tracking_enabled = defaultdict(lambda: True)
-        self.setup_scene()
-        self.setup_ik()
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
@@ -61,7 +61,10 @@ class Subscriber(Node):
         self.robot_state = {}
         self.cubes_pose = {}
         self.existing_cubes = {}
-        # self.rubiks_path = "omniverse://localhost/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
+        self.rubiks_path = "omniverse://localhost/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
+        self.nvidia_cube = "omniverse://127.0.0.1/Isaac/Props/Blocks/nvidia_cube.usd"
+        self.setup_scene()
+        self.setup_ik()
 
 
     def enable_tracking(self, data: Bool):
@@ -155,7 +158,7 @@ class Subscriber(Node):
             except:
                 pass
         if len(position) == 0:
-            return ArticulationAction(joint_positions=position)
+            return ArticulationAction(joint_positions=[0.0]*len(self.articulation_controller._articulation_view.dof_names))
         if controler is not None:
             return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
         else:
@@ -274,7 +277,7 @@ class Subscriber(Node):
 
         self.stage = simulation_app.context.get_stage()
         self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.034, -0.975))
+        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.0, -0.975))
         self.table.GetAttribute("xformOp:rotateZYX").Set(Gf.Vec3f(0, 0, 90))
         self.table.GetAttribute("xformOp:scale").Set(Gf.Vec3f(0.7, 0.6, 1.15))
 
@@ -323,14 +326,14 @@ class Subscriber(Node):
 
         self.left_gripper = ArticulationGripper(
             gripper_dof_names=["l_gripper_l_finger_joint", "l_gripper_r_finger_joint"],
-            gripper_closed_position=[0.0, 0.0],
+            gripper_closed_position=[0.012, -0.012],
             gripper_open_position=[0.020833, -0.020833],
         )
         self.left_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
 
         self.right_gripper = ArticulationGripper(
             gripper_dof_names=["r_gripper_l_finger_joint", "r_gripper_r_finger_joint"],
-            gripper_closed_position=[0.0, 0.0],
+            gripper_closed_position=[0.0169, -0.0169],
             gripper_open_position=[0.020833, -0.020833],
         )
         self.right_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
@@ -339,7 +342,6 @@ class Subscriber(Node):
         self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
 
         rmp_config_dir = os.path.join("/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow")
-
         # Initialize an RmpFlow object
         self.right_rmpflow = RmpFlow(
             robot_description_path=os.path.join(rmp_config_dir, "right_robot_descriptor.yaml"),
@@ -361,7 +363,7 @@ class Subscriber(Node):
             "/World/right_cube",
             position=np.array([0.8, -0.1, 0.1]),
             orientation=np.array([0, -1, 0, 0]),
-            size=np.array([0.05, 0.05, 0.05]),
+            size=np.array([0.005, 0.005, 0.005]),
             color=np.array([0, 0, 1]),
         )
 
@@ -369,8 +371,15 @@ class Subscriber(Node):
             "/World/left_cube",
             position=np.array([0.8, 0.1, 0.1]),
             orientation=np.array([0, -1, 0, 0]),
-            size=np.array([0.05, 0.05, 0.05]),
+            size=np.array([0.005, 0.005, 0.005]),
             color=np.array([0, 0, 1]),
+        )
+        self.physical_cube = DynamicCuboid(
+            "/World/physical_cube",
+            position=np.array([0.8, 0.1, 0.1]),
+            orientation=np.array([0, -1, 0, 0]),
+            size=np.array([0.04, 0.04, 0.04]),
+            color=np.array([0, 1, 0]),
         )
         physics_dt = 1 / 60
         self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt)
@@ -380,14 +389,46 @@ class Subscriber(Node):
         # self.left_rmpflow.visualize_collision_spheres()
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
-        self.articulation_controller.set_gains(kps=2000000, kds=400000)
+        # self.articulation_controller.set_gains(kps=134217, kds=67100)
+        self.articulation_controller.set_gains(kps=536868, kds=4294400)
         # self.articulation_controller.set_gains(kps=4200, kds=840)
         # print(self.articulation_controller._articulation_view.dof_names)
         fake_table = FixedCuboid(
-            "/World/fake_table", position=np.array([0.6, 0.0, -0.23]), size=np.array([0.64, 1.16, 0.07])
+            "/World/fake_table", position=np.array([0.6, 0.0, -0.25]), size=np.array([0.64, 1.16, 0.07])
         )
         self.right_rmpflow.add_obstacle(fake_table)
         self.left_rmpflow.add_obstacle(fake_table)
+        print(self.rubiks_path)
+        add_reference_to_stage(
+            usd_path=self.rubiks_path,
+            prim_path="/World/rubiks1",
+        )
+        cube = XFormPrim(
+            prim_path="/World/rubiks1",
+            name="cube1",
+            position=np.array([0.6, -0.1, 0.0]),
+            scale=np.array([0.0056,0.0056,0.0056]),
+        )  # w,x,y,z
+        add_reference_to_stage(
+            usd_path=self.rubiks_path,
+            prim_path="/World/rubiks2",
+        )
+        cube = XFormPrim(
+            prim_path="/World/rubiks2",
+            name="cube2",
+            position=np.array([0.8, 0.0, 0.0]),
+            scale=np.array([0.0056,0.0056,0.0056]),
+        )  # w,x,y,z
+        add_reference_to_stage(
+            usd_path=self.rubiks_path,
+            prim_path="/World/rubiks3",
+        )
+        cube = XFormPrim(
+            prim_path="/World/rubiks3",
+            name="cube3",
+            position=np.array([0.6, 0.1, 0.0]),
+            scale=np.array([0.0056,0.0056,0.0056]),
+        )  # w,x,y,z
 
 
 if __name__ == "__main__":
