@@ -11,19 +11,22 @@ import omni
 import omni.graph.core as og
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
-from omni.isaac.core.objects.cuboid import FixedCuboid, VisualCuboid, DynamicCuboid
+from omni.isaac.core.controllers import BaseGripperController
+from omni.isaac.core.objects.cuboid import (DynamicCuboid, FixedCuboid,
+                                            VisualCuboid)
+from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import (disable_extension,
                                               enable_extension,
                                               get_extension_path_from_name)
-from omni.isaac.core.utils.stage import is_stage_loading, add_reference_to_stage
+from omni.isaac.core.utils.stage import (add_reference_to_stage,
+                                         is_stage_loading)
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
 from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.isaac.motion_generation.lula import RmpFlow
-from omni.isaac.core.controllers import BaseGripperController
 from omni.usd import Gf
-from omni.isaac.core.prims.xform_prim import XFormPrim
+
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
 
@@ -61,7 +64,7 @@ class Subscriber(Node):
         self.robot_state = {}
         self.cubes_pose = {}
         self.existing_cubes = {}
-        self.rubiks_path = "omniverse://localhost/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
+        self.rubiks_path = "omniverse://127.0.0.1/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
         self.nvidia_cube = "omniverse://127.0.0.1/Isaac/Props/Blocks/nvidia_cube.usd"
         self.setup_scene()
         self.setup_ik()
@@ -84,7 +87,7 @@ class Subscriber(Node):
                     f"/World/{name}",
                     position=pose[0],
                     orientation=pose[1],
-                    size=np.array([0.05, 0.05, 0.05]),
+                    size=np.array([0.04, 0.04, 0.04]),
                     color=np.array([1, 0, 0]),
                 )
             else:
@@ -326,14 +329,14 @@ class Subscriber(Node):
 
         self.left_gripper = ArticulationGripper(
             gripper_dof_names=["l_gripper_l_finger_joint", "l_gripper_r_finger_joint"],
-            gripper_closed_position=[0.012, -0.012],
+            gripper_closed_position=[0.0, -0.0],
             gripper_open_position=[0.020833, -0.020833],
         )
         self.left_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
 
         self.right_gripper = ArticulationGripper(
             gripper_dof_names=["r_gripper_l_finger_joint", "r_gripper_r_finger_joint"],
-            gripper_closed_position=[0.0169, -0.0169],
+            gripper_closed_position=[0.0, -0.0],
             gripper_open_position=[0.020833, -0.020833],
         )
         self.right_gripper.initialize(self.baxter, self.baxter_robot.get_articulation_controller())
@@ -374,13 +377,6 @@ class Subscriber(Node):
             size=np.array([0.005, 0.005, 0.005]),
             color=np.array([0, 0, 1]),
         )
-        self.physical_cube = DynamicCuboid(
-            "/World/physical_cube",
-            position=np.array([0.8, 0.1, 0.1]),
-            orientation=np.array([0, -1, 0, 0]),
-            size=np.array([0.04, 0.04, 0.04]),
-            color=np.array([0, 1, 0]),
-        )
         physics_dt = 1 / 60
         self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt)
         self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt)
@@ -398,38 +394,6 @@ class Subscriber(Node):
         )
         self.right_rmpflow.add_obstacle(fake_table)
         self.left_rmpflow.add_obstacle(fake_table)
-        print(self.rubiks_path)
-        add_reference_to_stage(
-            usd_path=self.rubiks_path,
-            prim_path="/World/rubiks1",
-        )
-        cube = XFormPrim(
-            prim_path="/World/rubiks1",
-            name="cube1",
-            position=np.array([0.6, -0.1, 0.0]),
-            scale=np.array([0.0056,0.0056,0.0056]),
-        )  # w,x,y,z
-        add_reference_to_stage(
-            usd_path=self.rubiks_path,
-            prim_path="/World/rubiks2",
-        )
-        cube = XFormPrim(
-            prim_path="/World/rubiks2",
-            name="cube2",
-            position=np.array([0.8, 0.0, 0.0]),
-            scale=np.array([0.0056,0.0056,0.0056]),
-        )  # w,x,y,z
-        add_reference_to_stage(
-            usd_path=self.rubiks_path,
-            prim_path="/World/rubiks3",
-        )
-        cube = XFormPrim(
-            prim_path="/World/rubiks3",
-            name="cube3",
-            position=np.array([0.6, 0.1, 0.0]),
-            scale=np.array([0.0056,0.0056,0.0056]),
-        )  # w,x,y,z
-
 
 if __name__ == "__main__":
     rclpy.init()
