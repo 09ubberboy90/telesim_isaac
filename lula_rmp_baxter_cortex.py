@@ -288,7 +288,7 @@ class Subscriber():
         # Get the urdf file path
 
         self.urdf_path = (
-            "/home/ubb/Documents/baxter-stack/ROS2/src/baxter_common_ros2/baxter_description/urdf/baxter.urdf"
+            "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
         )
         # Finally import the robot
         result, self.baxter = omni.kit.commands.execute(
