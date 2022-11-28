@@ -23,6 +23,7 @@
     "python.analysis.extraPaths": [		
 		"/home/ubb/.local/share/ov/pkg/isaac_sim-2022.1.0/exts/omni.isaac.motion_generation",
 		"/home/ubb/.local/share/ov/pkg/isaac_sim-2022.1.0/exts/omni.isaac.ros2_bridge/omni/isaac/rclpy",
+		"/home/ubb/.local/share/ov/pkg/isaac_sim-2022.1.0/exts/omni.isaac.ros_bridge/noetic/lib/python3/dist-packages",
 		"/home/ubb/.local/share/ov/pkg/isaac_sim-2022.1.0/exts/omni.isaac.motion_planning",
 		"/home/ubb/.local/share/ov/pkg/isaac_sim-2022.1.0/exts/omni.isaac.core_archive",
 		"/home/ubb/.local/share/ov/pkg/isaac_sim-2022.1.0/exts/omni.isaac.dynamic_control",

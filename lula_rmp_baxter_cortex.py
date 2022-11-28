@@ -14,8 +14,7 @@ from omni.isaac.core.articulations import ArticulationGripper
 from omni.isaac.core.objects.cuboid import FixedCuboid, VisualCuboid
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.robots.robot import Robot
-from omni.isaac.core.utils.extensions import (disable_extension,
-                                              enable_extension,
+from omni.isaac.core.utils.extensions import (enable_extension,
                                               get_extension_path_from_name)
 from omni.isaac.core.utils.stage import (add_reference_to_stage,
                                          is_stage_loading)
@@ -25,35 +24,40 @@ from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.isaac.motion_generation.lula import RmpFlow
 from omni.usd import Gf
 
-disable_extension("omni.isaac.ros_bridge")
-enable_extension("omni.isaac.ros2_bridge")
+enable_extension("omni.isaac.ros_bridge")
 
 simulation_app.update()
 
-from threading import Event, Thread
+# check if rosmaster node is running
+# this is to prevent this sample from waiting indefinetly if roscore is not running
+# can be removed in regular usage
+import rosgraph
+
+if not rosgraph.is_master_online():
+    carb.log_error("Please run roscore before executing this script")
+    simulation_app.close()
+    exit()
 
 import numpy as np
 import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
-import rclpy
+import rospy
 from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
 
-class Subscriber(Node):
+class Subscriber():
     def __init__(self):
-        super().__init__("isaac_sim_loop")
         self.tracking_enabled = defaultdict(lambda: True)
-        self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
-        self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
-        self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
-        self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
-        self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
-        self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
-        self.cube_sub = self.create_subscription(PoseArray, "detected_cubes", self.get_cubes, 10)
+        self.movement_sub = rospy.Subscriber("activate_tracking", Bool, self.enable_tracking)
+        self.ros_sub = rospy.Subscriber("right_hand/pose", Pose, self.move_right_cube_callback)
+        self.trigger_sub = rospy.Subscriber("right_hand/trigger", Bool, self.right_trigger_callback)
+        self.ros_sub_2 = rospy.Subscriber("left_hand/pose", Pose, self.move_left_cube_callback)
+        self.trigger_sub_2 = rospy.Subscriber("left_hand/trigger", Bool, self.left_trigger_callback)
+        self.robot_state_sub = rospy.Subscriber("robot/joint_states", JointState, self.get_robot_state)
+        self.cube_sub = rospy.Subscriber("detected_cubes", PoseArray, self.get_cubes)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
@@ -163,9 +167,9 @@ class Subscriber(Node):
     def left_trigger_callback(self, data: Bool):
         self.trigger["left"] = data.data
 
-    def rclpy_spinner(self, event):
-        while not event.is_set():
-            rclpy.spin_once(self)
+    # def rclpy_spinner(self, event):
+    #     while not event.is_set():
+    #         rclpy.spin_once(self)
 
     def create_robot_articulation_state(self, controler: ArticulationMotionPolicy = None) -> ArticulationAction:
         position = []
@@ -184,9 +188,9 @@ class Subscriber(Node):
     def run_simulation(self):
         # Track any movements of the robot base
 
-        event = Event()
-        rclpy_thread = Thread(target=self.rclpy_spinner, args=[event])
-        rclpy_thread.start()
+        # event = Event()
+        # rclpy_thread = Thread(target=self.rclpy_spinner, args=[event])
+        # rclpy_thread.start()
 
         self.timeline.play()
         while simulation_app.is_running():
@@ -242,10 +246,18 @@ class Subscriber(Node):
                     # self.articulation_controller.apply_action(self.create_robot_articulation_state(self.left_articulation_rmpflow))
 
         # Cleanup
+        # event.set()
+        # rclpy_thread.join()
+        rospy.signal_shutdown("Shutdown Received")
+        self.movement_sub.unregister()
+        self.ros_sub.unregister()
+        self.trigger_sub.unregister()
+        self.ros_sub_2.unregister()
+        self.trigger_sub_2.unregister()
+        self.robot_state_sub.unregister()
+        self.cube_sub.unregister()
+        rospy.signal_shutdown("Shutdown Received")
         self.timeline.stop()
-        event.set()
-        rclpy_thread.join()
-        self.destroy_node()
         simulation_app.close()
 
     def setup_scene(self):
@@ -308,8 +320,8 @@ class Subscriber(Node):
                     og.Controller.Keys.CREATE_NODES: [
                         ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
                         ("ReadSystemTime", "omni.isaac.core_nodes.IsaacReadSystemTime"),
-                        ("PublishJointState", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
-                        ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
+                        ("PublishJointState", "omni.isaac.ros_bridge.ROS1PublishJointState"),
+                        ("PublishTF", "omni.isaac.ros_bridge.ROS1PublishTransformTree"),
                         # ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
                     ],
                     og.Controller.Keys.CONNECT: [
@@ -410,6 +422,6 @@ class Subscriber(Node):
         self.left_rmpflow.add_obstacle(fake_table)
 
 if __name__ == "__main__":
-    rclpy.init()
+    rospy.init_node("baxter_isaac", anonymous=True, disable_signals=True, log_level=rospy.WARN)
     subscriber = Subscriber()
     subscriber.run_simulation()
