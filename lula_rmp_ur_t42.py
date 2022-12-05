@@ -305,8 +305,8 @@ class Subscriber(Node):
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.cube = VisualCuboid(
             "/World/cube",
-            position=np.array([0.8, -0.1, 0.1]),
-            orientation=np.array([-0.5, 0.5, 0.5, 0.5]),
+            position=np.array([0.4, -0.1, 0.2]),
+            orientation=np.array([0.707,0.0,-0.707,0.0]),
             size=np.array([0.05, 0.05, 0.05]),
             color=np.array([0, 0, 1]),
         )

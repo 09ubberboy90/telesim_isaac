@@ -13,7 +13,8 @@ from omni.isaac.core import World
 from omni.isaac.core.objects.cuboid import (DynamicCuboid, FixedCuboid,
                                             VisualCuboid)
 from omni.isaac.core.prims.xform_prim import XFormPrim
-from omni.isaac.core.utils.extensions import (enable_extension,
+from omni.isaac.core.utils.extensions import (disable_extension,
+                                                enable_extension,
                                               get_extension_path_from_name)
 from omni.isaac.core.utils.prims import get_prim_at_path, is_prim_path_valid
 from omni.isaac.core.utils.stage import (add_reference_to_stage,
@@ -31,32 +32,25 @@ from omni.isaac.motion_generation import (ArticulationMotionPolicy,
 from omni.isaac.motion_generation.lula import RmpFlow
 from omni.usd import Gf
 
-enable_extension("omni.isaac.ros_bridge")
+disable_extension("omni.isaac.ros_bridge")
+enable_extension("omni.isaac.ros2_bridge")
 
 simulation_app.update()
-
-# check if rosmaster node is running
-# this is to prevent this sample from waiting indefinetly if roscore is not running
-# can be removed in regular usage
-import rosgraph
-
-if not rosgraph.is_master_online():
-    carb.log_error("Please run roscore before executing this script")
-    simulation_app.close()
-    exit()
+from threading import Event, Thread
 
 import numpy as np
 import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
-import rospy
+import rclpy
 from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
+from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
 from baxter_robot import Baxter
 
+from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
 
 class ContextTools:
     """ The tools passed in to a behavior when build_behavior(tools) is called.
@@ -77,16 +71,17 @@ class ContextTools:
             self.commander.enable_obstacle(obs)
 
 
-class Subscriber():
+class Subscriber(Node):
     def __init__(self):
+        super().__init__("isaac_sim_loop")
         self.tracking_enabled = defaultdict(lambda: True)
-        self.movement_sub = rospy.Subscriber("activate_tracking", Bool, self.enable_tracking)
-        self.ros_sub = rospy.Subscriber("right_hand/pose", Pose, self.move_right_cube_callback)
-        self.trigger_sub = rospy.Subscriber("right_hand/trigger", Bool, self.right_trigger_callback)
-        self.ros_sub_2 = rospy.Subscriber("left_hand/pose", Pose, self.move_left_cube_callback)
-        self.trigger_sub_2 = rospy.Subscriber("left_hand/trigger", Bool, self.left_trigger_callback)
-        self.robot_state_sub = rospy.Subscriber("robot/joint_states", JointState, self.get_robot_state)
-        self.cube_sub = rospy.Subscriber("detected_cubes", PoseArray, self.get_cubes)
+        self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
+        self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
+        self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
+        self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
+        self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
+        self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
+        self.cube_sub = self.create_subscription(PoseArray, "detected_cubes", self.get_cubes, 10)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
@@ -97,9 +92,10 @@ class Subscriber():
         self.existing_cubes = {}
         self.rubiks_path = "omniverse://127.0.0.1/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
         self.nvidia_cube = "omniverse://127.0.0.1/Isaac/Props/Blocks/nvidia_cube.usd"
-        self.belief_cubes = {}
+        self.setup_scene()
+        self.setup_ik()
         self.setup_cortex()
-        # self.setup_ik()
+        self.create_action_graph()
 
 
     def enable_tracking(self, data: Bool):
@@ -107,12 +103,13 @@ class Subscriber():
 
     def get_cubes(self, data:PoseArray):
         for pose in data.poses:
-            self.cubes_pose[data.header.frame_id] = (
+            self.cubes_pose[data.header.frame_id+"_block"] = (
                 (pose.position.x, pose.position.y, pose.position.z),
                 (pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z),
             )
 
     def create_cubes(self):
+
         for name, pose in self.cubes_pose.items():
             if name not in self.existing_cubes.keys():
                 # self.existing_cubes[name] = VisualCuboid(
@@ -138,8 +135,8 @@ class Subscriber():
                 try:
                     self.existing_cubes[name].set_world_pose(*pose)
                 except:
-                    carb.log_warn(f"Object with name '{name}' has been deleted")
-                    self.existing_cubes.pop(name, None)
+                    carb.log_warn(f"Object with name '{name}' has been ignored")
+                    # self.existing_cubes.pop(name, None)
 
 
 
@@ -197,9 +194,9 @@ class Subscriber():
     def left_trigger_callback(self, data: Bool):
         self.trigger["left"] = data.data
 
-    # def rclpy_spinner(self, event):
-    #     while not event.is_set():
-    #         rclpy.spin_once(self)
+    def rclpy_spinner(self, event):
+        while not event.is_set():
+            rclpy.spin_once(self)
 
     def create_robot_articulation_state(self, controler: ArticulationMotionPolicy = None) -> ArticulationAction:
         position = []
@@ -217,9 +214,9 @@ class Subscriber():
 
     def run_simulation(self):
         # Track any movements of the robot base
-        # event = Event()
-        # rclpy_thread = Thread(target=self.rclpy_spinner, args=[event])
-        # rclpy_thread.start()
+        event = Event()
+        rclpy_thread = Thread(target=self.rclpy_spinner, args=[event])
+        rclpy_thread.start()
 
         self.timeline.play()
         while simulation_app.is_running():
@@ -239,7 +236,7 @@ class Subscriber():
 
                     traceback.print_exc()
 
-                # self.create_cubes()
+                self.create_cubes()
 
                 # if self.left_cube_pose is not None:
                 #     self.left_cube.set_world_pose(*self.left_cube_pose)
@@ -256,31 +253,29 @@ class Subscriber():
                 # else:
                 #     self.baxter_robot.left_gripper.set_positions(self.baxter_robot.left_gripper.open_position)
                 # # Query the current obstacle position
+
+                ## Disable the gripper as they are handled by the robot controller itself
                 action = self.context_tools.commander.get_action()
                 action.joint_positions[15:] = [None]*4
                 self.baxter_robot.get_articulation_controller().apply_action(action)
+                action = self.left_commander.get_action()
+                action.joint_positions[15:] = [None]*4
+                self.baxter_robot.get_articulation_controller().apply_action(action)
+
         # Cleanup
-        # event.set()
-        # rclpy_thread.join()
-        rospy.signal_shutdown("Shutdown Received")
-        self.movement_sub.unregister()
-        self.ros_sub.unregister()
-        self.trigger_sub.unregister()
-        self.ros_sub_2.unregister()
-        self.trigger_sub_2.unregister()
-        self.robot_state_sub.unregister()
-        self.cube_sub.unregister()
-        rospy.signal_shutdown("Shutdown Received")
         self.timeline.stop()
+        event.set()
+        rclpy_thread.join()
+        self.destroy_node()
         simulation_app.close()
 
-    def setup_cortex(self):
+    def setup_scene(self):
         assets_root_path = get_assets_root_path()
         if assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
             simulation_app.close()
             sys.exit()
-        usd_path = assets_root_path + "/Isaac/Environments/Grid/default_environment.usd"
+        usd_path = assets_root_path + "/Isaac/Environments/Simple_Room/simple_room.usd"
         omni.usd.get_context().open_stage(usd_path)
         # Wait two frames so that stage starts loading
         simulation_app.update()
@@ -291,8 +286,8 @@ class Subscriber():
             simulation_app.update()
         print("Loading Complete")
         self.ros_world = World(stage_units_in_meters=1.0)
-        print("<enabling cortex ROS-based extensions>")
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
+        # print("<enabling cortex ROS-based extensions>")
+        # ext_manager = omni.kit.app.get_app().get_extension_manager()
 
         # ext_manager.set_extension_enabled_immediate("omni.isaac.cortex", True)
         self.urdf_path = (
@@ -302,17 +297,49 @@ class Subscriber():
         self.baxter_robot = Baxter(urdf_path= self.urdf_path, name="robot", attach_gripper=True)
         self.ros_world.scene.add(self.baxter_robot)
 
+        self.stage = simulation_app.context.get_stage()
+        self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
+        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.0, -0.975))
+        self.table.GetAttribute("xformOp:rotateZYX").Set(Gf.Vec3f(0, 0, 90))
+        self.table.GetAttribute("xformOp:scale").Set(Gf.Vec3f(0.7, 0.6, 1.15))
+
+        # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
+        self.right_cube = VisualCuboid(
+            "/World/right_cube",
+            position=np.array([0.8, -0.1, 0.1]),
+            orientation=np.array([0, -1, 0, 0]),
+            size=0.005,
+            color=np.array([0, 0, 1]),
+        )
+        name = ["red_block", "green_block", "blue_block", "yellow_block", ]
+        color = [[1,0,0],[0,1,0],[0,0,1],[0,1,1],]
+        for i in range(4):
+            self.existing_cubes[name[i]] = DynamicCuboid(
+            f"/cortex/belief/objects/{name[i]}",
+            position=np.array([0.5+((i+1)%2)/10, 0.0, 0.25]),
+            orientation=np.array([1, 0, 0, 0]),
+            size=0.04,
+            color=np.array(color[i]),
+        )
+
+
+        self.left_cube = VisualCuboid(
+            "/World/left_cube",
+            position=np.array([0.8, 0.1, 0.1]),
+            orientation=np.array([0, -1, 0, 0]),
+            size=0.005,
+            color=np.array([0, 0, 1]),
+        )
+        
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
         simulation_app.update()
         self.ros_world.step()  # Step physics to trigger cortex_sim extension self.baxter_robot to be created.
         self.baxter_robot.initialize()
-        self.setup_ik()
-        self.ros_world.step()  # Step physics to trigger cortex_sim extension self.baxter_robot to be created.
-        self.ros_world.reset()  # Reset to setup all self.baxter_robot handles.
-        self.articulation_controller = self.baxter_robot.get_articulation_controller()
-        # self.articulation_controller.set_gains(kps=134217, kds=67100)
 
+        # self.articulation_controller.set_gains(kps=134217, kds=67100)
+        
+    def setup_cortex(self):
         add_cortex_attributes_to_robot(self.baxter_robot, is_suppressed=False, adaptive_cycle_dt=self.ros_world.get_physics_dt())
         
         self.ros_world.step()  # Trigger extensions to configure their robots
@@ -333,12 +360,12 @@ class Subscriber():
         # self.articulation_controller.set_gains(kps=536868, kds=4294400)
 
         self.right_commander = MotionCommander(self.baxter_robot, self.right_motion_policy_controller, self.right_cube)
+        self.left_commander = MotionCommander(self.baxter_robot, self.left_motion_policy_controller, self.left_cube)
         ## Once again as reset reset the gains
         self.context_tools = ContextTools(self.ros_world, objects, obstacles, self.baxter_robot, self.right_commander)
         self.df_behavior_watcher = DfBehaviorWatcher(verbose=True,)
         self.stage = simulation_app.context.get_stage()
         self.baxter_robot.set_joints_default_state([0.0, -0.7441, 1.1358, -0.6647, -0.6604, 0.3762, -0.6377, 0.9195, 1.0242, -0.3, 0.5024, 1.3634, 1.3482, -2.7965, 2.9428, 0.0208, -0.0208, 0.0208, -0.0208])
-        self.create_action_graph()
 
     def create_action_graph(self):
         try:
@@ -348,8 +375,8 @@ class Subscriber():
                     og.Controller.Keys.CREATE_NODES: [
                         ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
                         ("ReadSystemTime", "omni.isaac.core_nodes.IsaacReadSystemTime"),
-                        ("PublishJointState", "omni.isaac.ros_bridge.ROS1PublishJointState"),
-                        ("PublishTF", "omni.isaac.ros_bridge.ROS1PublishTransformTree"),
+                        ("PublishJointState", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
+                        ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                         # ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
                     ],
                     og.Controller.Keys.CONNECT: [
@@ -381,6 +408,8 @@ class Subscriber():
 
     def setup_ik(self):
 
+        self.articulation_controller = self.baxter_robot.get_articulation_controller()
+
         self.mg_extension_path = get_extension_path_from_name("omni.isaac.motion_generation")
         self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
 
@@ -400,38 +429,11 @@ class Subscriber():
             end_effector_frame_name="left_gripper",  # This frame name must be present in the URDF
             evaluations_per_frame=5,
         )
-
-        # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
-        self.right_cube = VisualCuboid(
-            "/World/right_cube",
-            position=np.array([0.8, -0.1, 0.1]),
-            orientation=np.array([0, -1, 0, 0]),
-            size=0.005,
-            color=np.array([0, 0, 1]),
-        )
-        name = ["red_block", "green_block", "blue_block", "yellow_block", ]
-        for i in range(4):
-            self.belief_cubes[i] = DynamicCuboid(
-            f"/cortex/belief/objects/{name[i]}",
-            position=np.array([0.5+((i+1)%2)/10, 0.0, 0.25]),
-            orientation=np.array([1, 0, 0, 0]),
-            size=0.04,
-            color=np.array([1, 1, 1]),
-        )
-
-
-        self.left_cube = VisualCuboid(
-            "/World/left_cube",
-            position=np.array([0.8, 0.1, 0.1]),
-            orientation=np.array([0, -1, 0, 0]),
-            size=0.005,
-            color=np.array([0, 0, 1]),
-        )
         physics_dt = 1 / 60
         self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt)
         self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt)
 
-        self.right_rmpflow.visualize_collision_spheres()
+        # self.right_rmpflow.visualize_collision_spheres()
         # self.left_rmpflow.visualize_collision_spheres()
         self.left_motion_policy_controller = MotionPolicyController(
             name="left_rmpflow_controller",
@@ -454,6 +456,6 @@ class Subscriber():
         # self.left_rmpflow.add_obstacle(fake_table)
 
 if __name__ == "__main__":
-    rospy.init_node("baxter_isaac", anonymous=True, disable_signals=True, log_level=rospy.WARN)
+    rclpy.init()
     subscriber = Subscriber()
     subscriber.run_simulation()
