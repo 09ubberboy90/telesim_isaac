@@ -13,11 +13,14 @@ from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
 from omni.isaac.core.objects.cuboid import VisualCuboid
 from omni.isaac.core.robots.robot import Robot
-from omni.isaac.core.utils.extensions import enable_extension, disable_extension, get_extension_path_from_name
+from omni.isaac.core.utils.extensions import (disable_extension,
+                                              enable_extension,
+                                              get_extension_path_from_name)
 from omni.isaac.core.utils.numpy.rotations import rot_matrices_to_quats
 from omni.isaac.core.utils.stage import is_stage_loading
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.isaac.motion_generation import ArticulationKinematicsSolver, LulaKinematicsSolver
+from omni.isaac.motion_generation import (ArticulationKinematicsSolver,
+                                          LulaKinematicsSolver)
 from omni.usd import Gf
 
 disable_extension("omni.isaac.ros_bridge")
@@ -25,10 +28,9 @@ enable_extension("omni.isaac.ros2_bridge")
 
 simulation_app.update()
 
-from threading import Thread, Event
+from threading import Event, Thread
 
 import numpy as np
-
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
 from geometry_msgs.msg import Pose

@@ -14,7 +14,7 @@ from omni.isaac.core.objects.cuboid import (DynamicCuboid, FixedCuboid,
                                             VisualCuboid)
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.utils.extensions import (disable_extension,
-                                                enable_extension,
+                                              enable_extension,
                                               get_extension_path_from_name)
 from omni.isaac.core.utils.prims import get_prim_at_path, is_prim_path_valid
 from omni.isaac.core.utils.stage import (add_reference_to_stage,
@@ -42,15 +42,14 @@ import numpy as np
 import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
+from baxter_robot import Baxter
 from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
+from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
-from baxter_robot import Baxter
-
-from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
 
 class ContextTools:
     """ The tools passed in to a behavior when build_behavior(tools) is called.

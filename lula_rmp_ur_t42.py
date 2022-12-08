@@ -10,15 +10,15 @@ import omni
 import omni.graph.core as og
 from omni.isaac.core import World
 from omni.isaac.core.articulations import ArticulationGripper
-from omni.isaac.core.objects.cuboid import VisualCuboid, FixedCuboid
+from omni.isaac.core.objects.cuboid import FixedCuboid, VisualCuboid
 from omni.isaac.core.robots.robot import Robot
-from omni.isaac.core.utils.extensions import disable_extension, enable_extension
+from omni.isaac.core.utils.extensions import (disable_extension,
+                                              enable_extension)
 from omni.isaac.core.utils.stage import is_stage_loading
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
 from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.isaac.motion_generation.lula import RmpFlow
-from omni.isaac.motion_generation import ArticulationMotionPolicy
 from omni.usd import Gf
 
 disable_extension("omni.isaac.ros_bridge")
@@ -29,7 +29,7 @@ simulation_app.update()
 from threading import Event, Thread
 
 import numpy as np
-
+import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
 from geometry_msgs.msg import Pose, PoseArray
@@ -38,7 +38,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
-import pyquaternion as pyq
 
 class Subscriber(Node):
     def __init__(self):
