@@ -9,7 +9,6 @@ import carb
 import omni
 import omni.graph.core as og
 from omni.isaac.core import World
-from omni.isaac.core.articulations import ArticulationGripper
 from omni.isaac.core.objects.cuboid import FixedCuboid, VisualCuboid
 from omni.isaac.core.robots.robot import Robot
 from omni.isaac.core.utils.extensions import (disable_extension,
@@ -17,7 +16,8 @@ from omni.isaac.core.utils.extensions import (disable_extension,
 from omni.isaac.core.utils.stage import is_stage_loading
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.isaac.motion_generation import ArticulationMotionPolicy
+from omni.isaac.motion_generation import (ArticulationMotionPolicy,
+                                          RmpFlowSmoothed)
 from omni.isaac.motion_generation.lula import RmpFlow
 from omni.usd import Gf
 
@@ -38,6 +38,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
+from ur3.ur_t42_robot import UR_T42_Robot
+
 
 class Subscriber(Node):
     def __init__(self):
@@ -48,7 +50,6 @@ class Subscriber(Node):
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.trigger_callback, 10)
-        self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
         self.cube_sub = self.create_subscription(PoseArray, "detected_cubes", self.get_cubes, 10)
 
         self.timeline = omni.timeline.get_timeline_interface()
@@ -75,17 +76,12 @@ class Subscriber(Node):
                     f"/World/{name}",
                     position=pose[0],
                     orientation=pose[1],
-                    size=np.array([0.05, 0.05, 0.05]),
+                    size=0.05,
                     color=np.array([1, 0, 0]),
                 )
             else:
                 self.existing_cubes[name].set_world_pose(*pose)
 
-
-
-    def get_robot_state(self, data: JointState):
-        for idx, el in enumerate(data.name):
-            self.robot_state[el] = data.position[idx]
 
 
     def move_cube_callback(self, data: Pose):
@@ -115,20 +111,6 @@ class Subscriber(Node):
         while not event.is_set():
             rclpy.spin_once(self)
 
-    def create_robot_articulation_state(self, controler: ArticulationMotionPolicy = None) -> ArticulationAction:
-        position = []
-        for name in self.articulation_controller._articulation_view.dof_names:
-            try:
-                position.append(self.robot_state[name])
-            except:
-                pass
-        if len(position) == 0:
-            return False, ArticulationAction(joint_positions=position)
-        if controler is not None:
-            return True, ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
-        else:
-            return True, ArticulationAction(joint_positions=position)
-
     def run_simulation(self):
         # Track any movements of the robot base
         counter = 0
@@ -148,9 +130,9 @@ class Subscriber(Node):
                     self.cube.set_world_pose(*self.cube_pose)
 
                 if self.trigger:
-                    self.gripper.set_positions(self.gripper.closed_position)
+                    self.ur_t42_robot.gripper.close()
                 else:
-                    self.gripper.set_positions(self.gripper.open_position)
+                    self.ur_t42_robot.gripper.open()
                 self.rmpflow.update_world()
                 if self.tracking_enabled:
 
@@ -159,13 +141,9 @@ class Subscriber(Node):
                         target_position=pose,
                         target_orientation=orientation,
                     )
-                    actions = self.articulation_rmpflow.get_next_articulation_action()
-                    self.articulation_controller.apply_action(actions)
-                else:
-                    success, actions = self.create_robot_articulation_state()
-                    if success:
-                        self.articulation_controller.apply_action(actions)
-
+                    action = self.articulation_rmpflow.get_next_articulation_action()
+                    action.joint_positions[len(action.joint_positions)-4:] = [None]*4
+                    self.ur_t42_robot.get_articulation_controller().apply_action(action)
         # Cleanup
         self.timeline.stop()
         event.set()
@@ -191,26 +169,14 @@ class Subscriber(Node):
             simulation_app.update()
         print("Loading Complete")
         self.ros_world = World(stage_units_in_meters=1.0)
-        # add a cube in the world
-        status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
-        import_config.merge_fixed_joints = False
-        import_config.convex_decomp = False
-        import_config.import_inertia_tensor = False
-        import_config.fix_base = True
-        import_config.distance_scale = 1
-        import_config.self_collision = True
-        # Get the urdf file path
 
         self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
-        # Finally import the robot
-        result, self.ur_t42 = omni.kit.commands.execute(
-            "URDFParseAndImportFile", urdf_path=self.urdf_path, import_config=import_config
-        )
 
-        self.ur_t42_robot = self.ros_world.scene.add(Robot(prim_path=self.ur_t42, name="ur_t42"))
-
+        self.ur_t42_robot = UR_T42_Robot(urdf_path=self.urdf_path, name="ur_t42")
+        self.ros_world.scene.add(self.ur_t42_robot)
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
+        self.ur_t42_robot.initialize()
 
         self.stage = simulation_app.context.get_stage()
         table = self.stage.GetPrimAtPath("/Root/table_low_327")
@@ -254,35 +220,22 @@ class Subscriber(Node):
             print(e)
 
         # Setting the /Franka target prim to Subscribe JointState node
-        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.ur_t42])
+        set_target_prims(primPath="/ActionGraph/SubscribeJointState", targetPrimPaths=[self.ur_t42_robot.prim_path])
 
         # Setting the /Franka target prim to Publish JointState node
-        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.ur_t42])
+        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.ur_t42_robot.prim_path])
 
         # Setting the /Franka target prim to Publish Transform Tree node
         set_target_prims(
-            primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.ur_t42]
+            primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.ur_t42_robot.prim_path]
         )
 
         simulation_app.update()
 
     def setup_ik(self):
-
-        self.gripper = ArticulationGripper(
-            gripper_dof_names=[
-                "swivel_2_to_finger_2_1",
-                "finger_2_1_to_finger_2_2",
-                "swivel_1_to_finger_1_1",
-                "finger_1_1_to_finger_1_2",
-            ],
-            gripper_closed_position=[1.57, 0.785, 1.57, 0.785],
-            gripper_open_position=[0.0, 0.0, 0.0, 0.0],
-        )
-        self.gripper.initialize(self.ur_t42, self.ur_t42_robot.get_articulation_controller())
-
         self.rmp_config_dir = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config"
 
-        self.rmpflow = RmpFlow(
+        self.rmpflow = RmpFlowSmoothed(
             robot_description_path=os.path.join(self.rmp_config_dir, "ur3_t42_robot_description.yaml"),
             urdf_path=self.urdf_path,
             rmpflow_config_path=os.path.join(self.rmp_config_dir, "ur3_t42_rmpflow_config.yaml"),
@@ -299,17 +252,17 @@ class Subscriber(Node):
 
         self.articulation_controller = self.ur_t42_robot.get_articulation_controller()
 
-        self.articulation_controller.set_gains(kps=2000000, kds=400000)
+        self.articulation_controller.set_gains(kps=[67108]*(self.ur_t42_robot.num_dof-4)+[10000000]*4, kds=[107374]*(self.ur_t42_robot.num_dof-4)+[2000000]*4)
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.cube = VisualCuboid(
             "/World/cube",
             position=np.array([0.4, -0.1, 0.2]),
             orientation=np.array([0.707,0.0,-0.707,0.0]),
-            size=np.array([0.05, 0.05, 0.05]),
+            size=0.05,
             color=np.array([0, 0, 1]),
         )
-        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.28,0,-0.04]), size=np.array([0.95,1.6,0.07]))
+        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.28,0,-0.04]), scale=np.array([18.7,28.5,0.07]))
         self.rmpflow.add_obstacle(fake_table)
 
         # print(self.articulation_controller._articulation_view.dof_names)
