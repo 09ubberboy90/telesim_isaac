@@ -45,7 +45,7 @@ class Baxter(Robot):
         name: str = "baxter",
         position: Optional[np.ndarray] = None,
         orientation: Optional[np.ndarray] = None,
-        attach_gripper: bool = False,
+        attach_gripper: bool = True,
     ) -> None:
         # prim = get_prim_at_path(prim_path)
         self._end_effector = None

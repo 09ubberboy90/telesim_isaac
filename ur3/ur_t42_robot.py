@@ -152,12 +152,10 @@ class UR_T42_Robot(Robot):
         """
         super().post_reset()
         self.gripper.post_reset()
-        self._articulation_controller.switch_dof_control_mode(
-            dof_index=self.gripper.joint_dof_indicies[0], mode="position"
-        )
-        self._articulation_controller.switch_dof_control_mode(
-            dof_index=self.gripper.joint_dof_indicies[1], mode="position"
-        )        
+        for index in self._grippers_dof_indices:
+            self._articulation_controller.switch_dof_control_mode(
+                dof_index=index, mode="position"
+            )
     def apply_action(self, control_actions: ArticulationAction) -> None:
         """Applies actions to all the joints of an articulation that corresponds to the ArticulationAction of the finger joints only.
 
