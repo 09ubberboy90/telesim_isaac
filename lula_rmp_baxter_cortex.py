@@ -42,7 +42,6 @@ import numpy as np
 import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
-from baxter_robot import Baxter
 from geometry_msgs.msg import Pose, PoseArray
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
@@ -50,10 +49,11 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
+from baxter.baxter_robot import Baxter
+
 
 class ContextTools:
-    """ The tools passed in to a behavior when build_behavior(tools) is called.
-    """
+    """The tools passed in to a behavior when build_behavior(tools) is called."""
 
     def __init__(self, world, objects, obstacles, robot, commander):
         self.world = world  # The World singleton.
@@ -63,7 +63,7 @@ class ContextTools:
         self.commander = commander  # The motion commander.
 
     def enable_obstacles(self):
-        """ Ensures the obstacles are enabled. This can be called by a behavior on construction. To
+        """Ensures the obstacles are enabled. This can be called by a behavior on construction. To
         reset any previous obstacle suppression.
         """
         for _, obs in self.obstacles.items():
@@ -96,13 +96,12 @@ class Subscriber(Node):
         self.setup_cortex()
         self.create_action_graph()
 
-
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
 
-    def get_cubes(self, data:PoseArray):
+    def get_cubes(self, data: PoseArray):
         for pose in data.poses:
-            self.cubes_pose[data.header.frame_id+"_block"] = (
+            self.cubes_pose[data.header.frame_id + "_block"] = (
                 (pose.position.x, pose.position.y, pose.position.z),
                 (pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z),
             )
@@ -127,7 +126,7 @@ class Subscriber(Node):
                     name="cube1",
                     position=pose[0],
                     orientation=pose[1],
-                    scale=np.array([0.0056,0.0056,0.0056]),
+                    scale=np.array([0.0056, 0.0056, 0.0056]),
                 )  # w,x,y,z
 
             else:
@@ -136,8 +135,6 @@ class Subscriber(Node):
                 except:
                     carb.log_warn(f"Object with name '{name}' has been ignored")
                     # self.existing_cubes.pop(name, None)
-
-
 
     def get_robot_state(self, data: JointState):
         for idx, el in enumerate(data.name):
@@ -205,7 +202,9 @@ class Subscriber(Node):
             except:
                 pass
         if len(position) == 0:
-            return ArticulationAction(joint_positions=[0.0]*len(self.articulation_controller._articulation_view.dof_names))
+            return ArticulationAction(
+                joint_positions=[0.0] * len(self.articulation_controller._articulation_view.dof_names)
+            )
         if controler is not None:
             return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
         else:
@@ -237,28 +236,29 @@ class Subscriber(Node):
 
                 self.create_cubes()
 
-                # if self.left_cube_pose is not None:
-                #     self.left_cube.set_world_pose(*self.left_cube_pose)
-                # if self.right_cube_pose is not None:
-                #     self.right_cube.set_world_pose(*self.right_cube_pose)
-
-                # if self.trigger["right"]:
-                #     self.baxter_robot.right_gripper.set_positions(self.baxter_robot.right_gripper.closed_position)
-                # else:
-                #     self.baxter_robot.right_gripper.set_positions(self.baxter_robot.right_gripper.open_position)
-
-                # if self.trigger["left"]:
-                #     self.baxter_robot.left_gripper.set_positions(self.baxter_robot.left_gripper.closed_position)
-                # else:
-                #     self.baxter_robot.left_gripper.set_positions(self.baxter_robot.left_gripper.open_position)
                 # # Query the current obstacle position
+                if self.tracking_enabled:  ## Make sure this is not enable when working with corte
+                    if self.trigger["right"]:
+                        self.baxter_robot.right_gripper.close()
+                    else:
+                        self.baxter_robot.right_gripper.open()
 
+                    if self.trigger["left"]:
+                        self.baxter_robot.left_gripper.close()
+                    else:
+                        self.baxter_robot.left_gripper.open()
+                    if self.left_cube_pose is not None:
+                        self.left_cube.set_world_pose(*self.left_cube_pose)
+                    if self.right_cube_pose is not None:
+                        self.right_cube.set_world_pose(*self.right_cube_pose)
+                    self.context_tools.commander.register_target_prim(self.right_cube)
+                    self.context_tools.commander.register_target_prim(self.left_cube)
                 ## Disable the gripper as they are handled by the robot controller itself
                 action = self.context_tools.commander.get_action()
-                action.joint_positions[15:] = [None]*4
+                action.joint_positions[15:] = [None] * 4
                 self.baxter_robot.get_articulation_controller().apply_action(action)
                 action = self.left_commander.get_action()
-                action.joint_positions[15:] = [None]*4
+                action.joint_positions[15:] = [None] * 4
                 self.baxter_robot.get_articulation_controller().apply_action(action)
 
         # Cleanup
@@ -289,11 +289,9 @@ class Subscriber(Node):
         # ext_manager = omni.kit.app.get_app().get_extension_manager()
 
         # ext_manager.set_extension_enabled_immediate("omni.isaac.cortex", True)
-        self.urdf_path = (
-            "/home/ubb/Documents/Baxter_isaac/ROS1/src/baxter_joint_controller/urdf/baxter.urdf"
-        )
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS1/src/baxter_joint_controller/urdf/baxter.urdf"
 
-        self.baxter_robot = Baxter(urdf_path= self.urdf_path, name="robot", attach_gripper=True)
+        self.baxter_robot = Baxter(urdf_path=self.urdf_path, name="robot", attach_gripper=True)
         self.ros_world.scene.add(self.baxter_robot)
 
         self.stage = simulation_app.context.get_stage()
@@ -310,17 +308,37 @@ class Subscriber(Node):
             size=0.005,
             color=np.array([0, 0, 1]),
         )
-        name = ["red_block", "green_block", "blue_block", "yellow_block", ]
-        color = [[1,0,0],[0,1,0],[0,0,1],[0,1,1],]
+        name = [
+            "red_block",
+            "green_block",
+            "blue_block",
+            "yellow_block",
+        ]
+        color = [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [0, 1, 1],
+        ]
         for i in range(4):
+            # add_reference_to_stage(
+            #     usd_path=self.rubiks_path,
+            #     prim_path=f"/cortex/belief/objects/{name[i]}",
+            # )
+            # self.existing_cubes[name[i]] = XFormPrim(
+            #     prim_path=f"/cortex/belief/objects/{name[i]}",
+            #     name=name[i],
+            #     position=np.array([0.5 + ((i + 1) % 2) / 10, 0.0, 0.25]),
+            #     orientation=np.array([1, 0, 0, 0]),
+            #     scale=np.array([0.0056, 0.0056, 0.0056]),
+            # )  # w,x,y,z
             self.existing_cubes[name[i]] = DynamicCuboid(
             f"/cortex/belief/objects/{name[i]}",
             position=np.array([0.5+((i+1)%2)/10, 0.0, 0.25]),
             orientation=np.array([1, 0, 0, 0]),
             size=0.04,
             color=np.array(color[i]),
-        )
-
+            )
 
         self.left_cube = VisualCuboid(
             "/World/left_cube",
@@ -329,7 +347,7 @@ class Subscriber(Node):
             size=0.005,
             color=np.array([0, 0, 1]),
         )
-        
+
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
         simulation_app.update()
@@ -337,10 +355,12 @@ class Subscriber(Node):
         self.baxter_robot.initialize()
 
         # self.articulation_controller.set_gains(kps=134217, kds=67100)
-        
+
     def setup_cortex(self):
-        add_cortex_attributes_to_robot(self.baxter_robot, is_suppressed=False, adaptive_cycle_dt=self.ros_world.get_physics_dt())
-        
+        add_cortex_attributes_to_robot(
+            self.baxter_robot, is_suppressed=False, adaptive_cycle_dt=self.ros_world.get_physics_dt()
+        )
+
         self.ros_world.step()  # Trigger extensions to configure their robots
         objects, obstacles = make_core_objects("belief")
         add_cortex_attributes_to_objects(objects)
@@ -362,9 +382,33 @@ class Subscriber(Node):
         self.left_commander = MotionCommander(self.baxter_robot, self.left_motion_policy_controller, self.left_cube)
         ## Once again as reset reset the gains
         self.context_tools = ContextTools(self.ros_world, objects, obstacles, self.baxter_robot, self.right_commander)
-        self.df_behavior_watcher = DfBehaviorWatcher(verbose=True,)
+        self.df_behavior_watcher = DfBehaviorWatcher(
+            verbose=True,
+        )
         self.stage = simulation_app.context.get_stage()
-        self.baxter_robot.set_joints_default_state([0.0, -0.7441, 1.1358, -0.6647, -0.6604, 0.3762, -0.6377, 0.9195, 1.0242, -0.3, 0.5024, 1.3634, 1.3482, -2.7965, 2.9428, 0.0208, -0.0208, 0.0208, -0.0208])
+        self.baxter_robot.set_joints_default_state(
+            [
+                0.0,
+                -0.7441,
+                1.1358,
+                -0.6647,
+                -0.6604,
+                0.3762,
+                -0.6377,
+                0.9195,
+                1.0242,
+                -0.3,
+                0.5024,
+                1.3634,
+                1.3482,
+                -2.7965,
+                2.9428,
+                0.0208,
+                -0.0208,
+                0.0208,
+                -0.0208,
+            ]
+        )
 
     def create_action_graph(self):
         try:
@@ -400,7 +444,9 @@ class Subscriber(Node):
 
         # Setting the /Franka target prim to Publish Transform Tree node
         set_target_prims(
-            primPath="/ActionGraph/PublishTF", inputName="inputs:targetPrims", targetPrimPaths=[self.baxter_robot.prim_path]
+            primPath="/ActionGraph/PublishTF",
+            inputName="inputs:targetPrims",
+            targetPrimPaths=[self.baxter_robot.prim_path],
         )
 
         simulation_app.update()
@@ -414,14 +460,14 @@ class Subscriber(Node):
 
         rmp_config_dir = os.path.join("/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow")
         # Initialize an RmpFlow object
-        self.right_rmpflow = RmpFlow(
+        self.right_rmpflow = RmpFlowSmoothed(
             robot_description_path=os.path.join(rmp_config_dir, "right_robot_descriptor.yaml"),
             urdf_path=self.urdf_path,
             rmpflow_config_path=os.path.join(rmp_config_dir, "baxter_rmpflow_common.yaml"),
             end_effector_frame_name="right_gripper_cube_offset",  # This frame name must be present in the URDF
             evaluations_per_frame=10,
         )
-        self.left_rmpflow = RmpFlow(
+        self.left_rmpflow = RmpFlowSmoothed(
             robot_description_path=os.path.join(rmp_config_dir, "left_robot_descriptor.yaml"),
             urdf_path=self.urdf_path,
             rmpflow_config_path=os.path.join(rmp_config_dir, "baxter_rmpflow_common.yaml"),
@@ -436,16 +482,19 @@ class Subscriber(Node):
         # self.left_rmpflow.visualize_collision_spheres()
         self.left_motion_policy_controller = MotionPolicyController(
             name="left_rmpflow_controller",
-            articulation_motion_policy=ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt)
+            articulation_motion_policy=ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt),
         )
         self.right_motion_policy_controller = MotionPolicyController(
             name="right_rmpflow_controller",
-            articulation_motion_policy=ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt)
+            articulation_motion_policy=ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt),
         )
 
         self.articulation_controller = self.baxter_robot.get_articulation_controller()
         ## Do not touch the grippers
-        self.articulation_controller.set_gains(kps=[536868]*(self.baxter_robot.num_dof-4)+[10000000]*4, kds=[68710400]*(self.baxter_robot.num_dof-4)+[2000000]*4)
+        self.articulation_controller.set_gains(
+            kps=[536868] * (self.baxter_robot.num_dof - 4) + [10000000] * 4,
+            kds=[68710400] * (self.baxter_robot.num_dof - 4) + [2000000] * 4,
+        )
 
         # print(self.articulation_controller._articulation_view.dof_names)
         # fake_table = FixedCuboid(
@@ -453,6 +502,7 @@ class Subscriber(Node):
         # )
         # self.right_rmpflow.add_obstacle(fake_table)
         # self.left_rmpflow.add_obstacle(fake_table)
+
 
 if __name__ == "__main__":
     rclpy.init()
