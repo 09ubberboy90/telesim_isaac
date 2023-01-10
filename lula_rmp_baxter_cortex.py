@@ -42,7 +42,7 @@ import numpy as np
 import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
-from geometry_msgs.msg import Pose, PoseArray
+from geometry_msgs.msg import Pose, PoseStamped
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
 from rclpy.node import Node
@@ -80,7 +80,7 @@ class Subscriber(Node):
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
-        self.cube_sub = self.create_subscription(PoseArray, "detected_cubes", self.get_cubes, 10)
+        self.cube_sub = self.create_subscription(PoseStamped, "detected_cubes", self.get_cubes, 10)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
@@ -99,12 +99,11 @@ class Subscriber(Node):
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
 
-    def get_cubes(self, data: PoseArray):
-        for pose in data.poses:
-            self.cubes_pose[data.header.frame_id + "_block"] = (
-                (pose.position.x, pose.position.y, pose.position.z),
-                (pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z),
-            )
+    def get_cubes(self, data: PoseStamped):
+        self.cubes_pose[data.header.frame_id + "_block"] = (
+            (data.pose.position.x, data.pose.position.y, data.pose.position.z),
+            (data.pose.orientation.w, data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z),
+        )
 
     def create_cubes(self):
 
@@ -318,7 +317,7 @@ class Subscriber(Node):
             [1, 0, 0],
             [0, 1, 0],
             [0, 0, 1],
-            [0, 1, 1],
+            [1, 1, 0],
         ]
         for i in range(4):
             # add_reference_to_stage(
@@ -332,7 +331,7 @@ class Subscriber(Node):
             #     orientation=np.array([1, 0, 0, 0]),
             #     scale=np.array([0.0056, 0.0056, 0.0056]),
             # )  # w,x,y,z
-            self.existing_cubes[name[i]] = DynamicCuboid(
+            self.existing_cubes[name[i]] = VisualCuboid(
             f"/cortex/belief/objects/{name[i]}",
             position=np.array([0.5+((i+1)%2)/10, 0.0, 0.25]),
             orientation=np.array([1, 0, 0, 0]),
