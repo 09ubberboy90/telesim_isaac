@@ -51,6 +51,7 @@ from std_msgs.msg import Bool
 
 from baxter.baxter_robot import Baxter
 
+import time
 
 class ContextTools:
     """The tools passed in to a behavior when build_behavior(tools) is called."""
@@ -79,8 +80,7 @@ class Subscriber(Node):
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
-        self.robot_state_sub = self.create_subscription(JointState, "robot/joint_states", self.get_robot_state, 10)
-        self.cube_sub = self.create_subscription(PoseStamped, "detected_cubes", self.get_cubes, 10)
+        self.cube_sub = self.create_subscription(PoseStamped, "detected_cubes", self.get_cubes, 1)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
@@ -91,6 +91,8 @@ class Subscriber(Node):
         self.existing_cubes = {}
         self.rubiks_path = "omniverse://127.0.0.1/Isaac/Props/Rubiks_Cube/rubiks_cube.usd"
         self.nvidia_cube = "omniverse://127.0.0.1/Isaac/Props/Blocks/nvidia_cube.usd"
+        self.time = time.time()
+        self.ros_time = time.time()
         self.setup_scene()
         self.setup_ik()
         self.setup_cortex()
@@ -104,6 +106,9 @@ class Subscriber(Node):
             (data.pose.position.x, data.pose.position.y, data.pose.position.z),
             (data.pose.orientation.w, data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z),
         )
+        # print(f"Ros Loop for {data.header.frame_id + '_block'}: {time.time()-self.ros_time}")
+        # self.ros_time = time.time()
+
 
     def create_cubes(self):
 
@@ -135,23 +140,14 @@ class Subscriber(Node):
                     carb.log_warn(f"Object with name '{name}' has been ignored")
                     # self.existing_cubes.pop(name, None)
 
-    def get_robot_state(self, data: JointState):
-        for idx, el in enumerate(data.name):
-            self.robot_state[el] = data.position[idx]
-        ## Duplicate gripper as they're set to mimic
-        try:
-            self.robot_state["l_gripper_r_finger_joint"] = self.robot_state["l_gripper_l_finger_joint"]
-            self.robot_state["r_gripper_r_finger_joint"] = self.robot_state["r_gripper_l_finger_joint"]
-        except:
-            pass
 
     def move_right_cube_callback(self, data: Pose):
-        # Make sure to respect the parity (Levi-Civita symbol)
         if data.position.x > 3000:
             self.tracking_enabled["right"] = False
         else:
             self.tracking_enabled["right"] = True
 
+        # Make sure to respect the parity (Levi-Civita symbol)
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
         offset_rot = pyq.Quaternion(w=0.707, x=0.707, y=0.0, z=0.0)  ## handles sideway instead of up
 
@@ -193,22 +189,6 @@ class Subscriber(Node):
         while not event.is_set():
             rclpy.spin_once(self)
 
-    def create_robot_articulation_state(self, controler: ArticulationMotionPolicy = None) -> ArticulationAction:
-        position = []
-        for name in self.articulation_controller._articulation_view.dof_names:
-            try:
-                position.append(self.robot_state[name])
-            except:
-                pass
-        if len(position) == 0:
-            return ArticulationAction(
-                joint_positions=[0.0] * len(self.articulation_controller._articulation_view.dof_names)
-            )
-        if controler is not None:
-            return ArticulationAction(joint_positions=controler._active_joints_view.map_to_articulation_order(position))
-        else:
-            return ArticulationAction(joint_positions=position)
-
     def run_simulation(self):
         # Track any movements of the robot base
         event = Event()
@@ -232,33 +212,33 @@ class Subscriber(Node):
                     import traceback
 
                     traceback.print_exc()
-
+                # print(f"Main Loop: {time.time()-self.time}")
+                # self.time = time.time()
                 self.create_cubes()
 
                 # # Query the current obstacle position
-                if self.tracking_enabled:  ## Make sure this is not enable when working with corte
-                    if self.trigger["right"]:
-                        self.baxter_robot.right_gripper.close()
-                    else:
-                        self.baxter_robot.right_gripper.open()
-
+                if self.global_tracking:  ## Make sure this is not enable when working with corte
                     if self.trigger["left"]:
                         self.baxter_robot.left_gripper.close()
+                        # print("closing")
                     else:
                         self.baxter_robot.left_gripper.open()
                     if self.left_cube_pose is not None:
                         self.left_cube.set_world_pose(*self.left_cube_pose)
-                    if self.right_cube_pose is not None:
-                        self.right_cube.set_world_pose(*self.right_cube_pose)
-                    self.context_tools.commander.register_target_prim(self.right_cube)
-                    self.context_tools.commander.register_target_prim(self.left_cube)
+                    pose, orientation = self.left_cube.get_world_pose()
+                    self.left_rmpflow.set_end_effector_target(target_position=pose, target_orientation=orientation)
+                    actions = self.left_articulation_rmpflow.get_next_articulation_action()
+                    # actions.joint_positions[15:] = [None] * 4
+                    # print(f"Controller action: {actions}")
+                    actions.joint_positions[15:] = [None] * 4
+                    self.baxter_robot.get_articulation_controller().apply_action(actions)
+
                 ## Disable the gripper as they are handled by the robot controller itself
                 action = self.context_tools.commander.get_action()
                 action.joint_positions[15:] = [None] * 4
                 self.baxter_robot.get_articulation_controller().apply_action(action)
-                action = self.left_commander.get_action()
-                action.joint_positions[15:] = [None] * 4
-                self.baxter_robot.get_articulation_controller().apply_action(action)
+
+
 
         # Cleanup
         self.timeline.stop()
@@ -378,7 +358,7 @@ class Subscriber(Node):
         # self.articulation_controller.set_gains(kps=536868, kds=4294400)
 
         self.right_commander = MotionCommander(self.baxter_robot, self.right_motion_policy_controller, self.right_cube)
-        self.left_commander = MotionCommander(self.baxter_robot, self.left_motion_policy_controller, self.left_cube)
+        # self.left_commander = MotionCommander(self.baxter_robot, self.left_motion_policy_controller, self.left_cube)
         ## Once again as reset reset the gains
         self.context_tools = ContextTools(self.ros_world, objects, obstacles, self.baxter_robot, self.right_commander)
         self.df_behavior_watcher = DfBehaviorWatcher(
@@ -457,7 +437,7 @@ class Subscriber(Node):
         self.mg_extension_path = get_extension_path_from_name("omni.isaac.motion_generation")
         self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
 
-        rmp_config_dir = os.path.join("/home/ubb/Documents/baxter-stack/ROS2/src/baxter_joint_controller/rmpflow")
+        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow")
         # Initialize an RmpFlow object
         self.right_rmpflow = RmpFlowSmoothed(
             robot_description_path=os.path.join(rmp_config_dir, "right_robot_descriptor.yaml"),
