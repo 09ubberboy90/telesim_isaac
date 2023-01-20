@@ -19,18 +19,11 @@ from omni.isaac.core.utils.extensions import (disable_extension,
 from omni.isaac.core.utils.prims import get_prim_at_path, is_prim_path_valid
 from omni.isaac.core.utils.stage import (add_reference_to_stage,
                                          is_stage_loading)
-from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.isaac.cortex.cortex_utils import (add_cortex_attributes_to_objects,
-                                            add_cortex_attributes_to_robot,
-                                            make_core_objects, set_home_config,
-                                            wrap_cortex_robot_or_die)
-from omni.isaac.cortex.motion_commander import MotionCommander
-from omni.isaac.motion_generation import (ArticulationMotionPolicy,
-                                          MotionPolicyController,
-                                          RmpFlowSmoothed)
-from omni.isaac.motion_generation.lula import RmpFlow
 from omni.usd import Gf
+from omni.isaac.cortex.cortex_world import CortexWorld
+from omni.isaac.cortex.motion_commander import PosePq
+from omni.isaac.cortex.cortex_utils import load_behavior_module
 
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
@@ -44,31 +37,13 @@ import pyquaternion as pyq
 import rclpy
 from geometry_msgs.msg import Pose, PoseStamped
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.cortex.df_behavior_watcher import DfBehaviorWatcher
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
-from baxter.baxter_robot import Baxter
+from baxter.baxter_robot import Baxter, CortexBaxter
 
 import time
-
-class ContextTools:
-    """The tools passed in to a behavior when build_behavior(tools) is called."""
-
-    def __init__(self, world, objects, obstacles, robot, commander):
-        self.world = world  # The World singleton.
-        self.objects = objects  # The objects under /cortex/belief/objects as core API objects.
-        self.obstacles = obstacles  # Those objects marked as obstacles.
-        self.robot = robot  # The belief robot.
-        self.commander = commander  # The motion commander.
-
-    def enable_obstacles(self):
-        """Ensures the obstacles are enabled. This can be called by a behavior on construction. To
-        reset any previous obstacle suppression.
-        """
-        for _, obs in self.obstacles.items():
-            self.commander.enable_obstacle(obs)
 
 
 class Subscriber(Node):
@@ -76,6 +51,7 @@ class Subscriber(Node):
         super().__init__("isaac_sim_loop")
         self.tracking_enabled = defaultdict(lambda: True)
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
+        self.decider_activate = self.create_subscription(Bool, "activate_behavior", self.enable_behavior, 10)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
@@ -94,12 +70,15 @@ class Subscriber(Node):
         self.time = time.time()
         self.ros_time = time.time()
         self.setup_scene()
-        self.setup_ik()
-        self.setup_cortex()
         self.create_action_graph()
 
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
+
+    def enable_behavior(self, data: Bool):
+        self.global_tracking = False
+        decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/block_stacking_behavior.py").make_decider_network(self.baxter_robot)
+        self.ros_world.add_decider_network(decider_network)
 
     def get_cubes(self, data: PoseStamped):
         self.cubes_pose[data.header.frame_id + "_block"] = (
@@ -203,41 +182,26 @@ class Subscriber(Node):
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
 
-                self.df_behavior_watcher.check_reload(self.context_tools)
-
-                try:
-                    self.df_behavior_watcher.tick_behavior()
-                except Exception as e:
-                    print("\nProblem ticking behavior.")
-                    import traceback
-
-                    traceback.print_exc()
                 # print(f"Main Loop: {time.time()-self.time}")
                 # self.time = time.time()
                 self.create_cubes()
 
                 # # Query the current obstacle position
                 if self.global_tracking:  ## Make sure this is not enable when working with corte
-                    if self.trigger["left"]:
+                    if self.trigger["left"] and self.tracking_enabled["left"]:
                         self.baxter_robot.left_gripper.close()
                         # print("closing")
                     else:
                         self.baxter_robot.left_gripper.open()
-                    if self.left_cube_pose is not None:
-                        self.left_cube.set_world_pose(*self.left_cube_pose)
-                    pose, orientation = self.left_cube.get_world_pose()
-                    self.left_rmpflow.set_end_effector_target(target_position=pose, target_orientation=orientation)
-                    actions = self.left_articulation_rmpflow.get_next_articulation_action()
-                    # actions.joint_positions[15:] = [None] * 4
-                    # print(f"Controller action: {actions}")
-                    actions.joint_positions[15:] = [None] * 4
-                    self.baxter_robot.get_articulation_controller().apply_action(actions)
+                    if self.trigger["right"] and self.tracking_enabled["right"]:
+                        self.baxter_robot.gripper.close()
+                    else:
+                        self.baxter_robot.gripper.open()
 
-                ## Disable the gripper as they are handled by the robot controller itself
-                action = self.context_tools.commander.get_action()
-                action.joint_positions[15:] = [None] * 4
-                self.baxter_robot.get_articulation_controller().apply_action(action)
-
+                    if self.tracking_enabled["right"]:
+                        self.baxter_robot.arm.send_end_effector(target_pose=PosePq(*self.right_cube.get_world_pose()))
+                    if self.tracking_enabled["left"]:
+                        self.baxter_robot.left_arm.send_end_effector(target_pose=PosePq(*self.left_cube.get_world_pose()))
 
 
         # Cleanup
@@ -263,15 +227,11 @@ class Subscriber(Node):
         while is_stage_loading():
             simulation_app.update()
         print("Loading Complete")
-        self.ros_world = World(stage_units_in_meters=1.0)
-        # print("<enabling cortex ROS-based extensions>")
-        # ext_manager = omni.kit.app.get_app().get_extension_manager()
+        self.ros_world = CortexWorld(stage_units_in_meters=1.0)
 
-        # ext_manager.set_extension_enabled_immediate("omni.isaac.cortex", True)
-        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS1/src/baxter_joint_controller/urdf/baxter.urdf"
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
 
-        self.baxter_robot = Baxter(urdf_path=self.urdf_path, name="robot", attach_gripper=True)
-        self.ros_world.scene.add(self.baxter_robot)
+        self.baxter_robot = self.ros_world.add_robot(CortexBaxter(name="baxter", urdf_path=self.urdf_path))
 
         self.stage = simulation_app.context.get_stage()
         self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
@@ -281,7 +241,7 @@ class Subscriber(Node):
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
-            "/World/right_cube",
+            "/World/Control/right_cube",
             position=np.array([0.8, -0.1, 0.1]),
             orientation=np.array([0, -1, 0, 0]),
             size=0.005,
@@ -312,15 +272,18 @@ class Subscriber(Node):
             #     scale=np.array([0.0056, 0.0056, 0.0056]),
             # )  # w,x,y,z
             self.existing_cubes[name[i]] = VisualCuboid(
-            f"/cortex/belief/objects/{name[i]}",
-            position=np.array([0.5+((i+1)%2)/10, 0.0, 0.25]),
+            f"/World/Obs/{name[i]}",
+            name = name[i],
+            position=np.array([0.3+((i+1)%4)/10, 0.0, -0.18]),
             orientation=np.array([1, 0, 0, 0]),
             size=0.04,
             color=np.array(color[i]),
             )
+            obj = self.ros_world.scene.add(self.existing_cubes[name[i]])
+            self.baxter_robot.register_obstacle(obj)
 
         self.left_cube = VisualCuboid(
-            "/World/left_cube",
+            "/World/Control/left_cube",
             position=np.array([0.8, 0.1, 0.1]),
             orientation=np.array([0, -1, 0, 0]),
             size=0.005,
@@ -333,61 +296,6 @@ class Subscriber(Node):
         self.ros_world.step()  # Step physics to trigger cortex_sim extension self.baxter_robot to be created.
         self.baxter_robot.initialize()
 
-        # self.articulation_controller.set_gains(kps=134217, kds=67100)
-
-    def setup_cortex(self):
-        add_cortex_attributes_to_robot(
-            self.baxter_robot, is_suppressed=False, adaptive_cycle_dt=self.ros_world.get_physics_dt()
-        )
-
-        self.ros_world.step()  # Trigger extensions to configure their robots
-        objects, obstacles = make_core_objects("belief")
-        add_cortex_attributes_to_objects(objects)
-        for name, obj in objects.items():
-            self.ros_world.scene.add(obj)
-
-        print("obstacles:")
-        for i, name in enumerate(obstacles):
-            print("%d) obs: %s" % (i, name))
-
-        # Reset then step the self.ros_world to set all initial configurations of the self.baxter_robot and corresponding
-        # child USD elements (e.g. cortex's eff frame which aligns with the RMPflow policy's
-        # end-effector).
-        self.ros_world.reset()
-        self.ros_world.step(render=False)
-        # self.articulation_controller.set_gains(kps=536868, kds=4294400)
-
-        self.right_commander = MotionCommander(self.baxter_robot, self.right_motion_policy_controller, self.right_cube)
-        # self.left_commander = MotionCommander(self.baxter_robot, self.left_motion_policy_controller, self.left_cube)
-        ## Once again as reset reset the gains
-        self.context_tools = ContextTools(self.ros_world, objects, obstacles, self.baxter_robot, self.right_commander)
-        self.df_behavior_watcher = DfBehaviorWatcher(
-            verbose=True,
-        )
-        self.stage = simulation_app.context.get_stage()
-        self.baxter_robot.set_joints_default_state(
-            [
-                0.0,
-                -0.7441,
-                1.1358,
-                -0.6647,
-                -0.6604,
-                0.3762,
-                -0.6377,
-                0.9195,
-                1.0242,
-                -0.3,
-                0.5024,
-                1.3634,
-                1.3482,
-                -2.7965,
-                2.9428,
-                0.0208,
-                -0.0208,
-                0.0208,
-                -0.0208,
-            ]
-        )
 
     def create_action_graph(self):
         try:
@@ -429,59 +337,6 @@ class Subscriber(Node):
         )
 
         simulation_app.update()
-
-    def setup_ik(self):
-
-        self.articulation_controller = self.baxter_robot.get_articulation_controller()
-
-        self.mg_extension_path = get_extension_path_from_name("omni.isaac.motion_generation")
-        self.kinematics_config_dir = os.path.join(self.mg_extension_path, "motion_policy_configs")
-
-        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow")
-        # Initialize an RmpFlow object
-        self.right_rmpflow = RmpFlowSmoothed(
-            robot_description_path=os.path.join(rmp_config_dir, "right_robot_descriptor.yaml"),
-            urdf_path=self.urdf_path,
-            rmpflow_config_path=os.path.join(rmp_config_dir, "baxter_rmpflow_common.yaml"),
-            end_effector_frame_name="right_gripper_cube_offset",  # This frame name must be present in the URDF
-            evaluations_per_frame=10,
-        )
-        self.left_rmpflow = RmpFlowSmoothed(
-            robot_description_path=os.path.join(rmp_config_dir, "left_robot_descriptor.yaml"),
-            urdf_path=self.urdf_path,
-            rmpflow_config_path=os.path.join(rmp_config_dir, "baxter_rmpflow_common.yaml"),
-            end_effector_frame_name="left_gripper",  # This frame name must be present in the URDF
-            evaluations_per_frame=5,
-        )
-        physics_dt = 1 / 60
-        self.right_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt)
-        self.left_articulation_rmpflow = ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt)
-
-        # self.right_rmpflow.visualize_collision_spheres()
-        # self.left_rmpflow.visualize_collision_spheres()
-        self.left_motion_policy_controller = MotionPolicyController(
-            name="left_rmpflow_controller",
-            articulation_motion_policy=ArticulationMotionPolicy(self.baxter_robot, self.left_rmpflow, physics_dt),
-        )
-        self.right_motion_policy_controller = MotionPolicyController(
-            name="right_rmpflow_controller",
-            articulation_motion_policy=ArticulationMotionPolicy(self.baxter_robot, self.right_rmpflow, physics_dt),
-        )
-
-        self.articulation_controller = self.baxter_robot.get_articulation_controller()
-        ## Do not touch the grippers
-        self.articulation_controller.set_gains(
-            kps=[536868] * (self.baxter_robot.num_dof - 4) + [10000000] * 4,
-            kds=[68710400] * (self.baxter_robot.num_dof - 4) + [2000000] * 4,
-        )
-
-        # print(self.articulation_controller._articulation_view.dof_names)
-        # fake_table = FixedCuboid(
-        #     "/World/fake_table", position=np.array([0.6, 0.0, -0.25]), size=np.array([0.64, 1.16, 0.07])
-        # )
-        # self.right_rmpflow.add_obstacle(fake_table)
-        # self.left_rmpflow.add_obstacle(fake_table)
-
 
 if __name__ == "__main__":
     rclpy.init()

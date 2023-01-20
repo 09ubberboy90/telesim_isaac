@@ -7,18 +7,39 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 #
 from collections import defaultdict
-from typing import Optional
+import os
+from typing import Optional, Sequence
 
 import carb
 import numpy as np
 import omni
 from omni.isaac.core.prims.rigid_prim import RigidPrim
 from omni.isaac.core.robots.robot import Robot
+from omni.isaac.cortex.robot import MotionCommandedRobot, CortexGripper, DirectSubsetCommander
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.manipulators.grippers.parallel_gripper import ParallelGripper
+from omni.isaac.core.articulations import Articulation, ArticulationSubset
+import omni.isaac.motion_generation.interface_config_loader as icl
+from omni.isaac.motion_generation import ArticulationMotionPolicy, RmpFlowSmoothed
+from omni.isaac.core.objects import VisualCuboid
+from omni.isaac.cortex.motion_commander import MotionCommander
+
+def import_baxter_robot(urdf_path):
+    status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
+    import_config.merge_fixed_joints = False
+    import_config.convex_decomp = False
+    import_config.import_inertia_tensor = False
+    import_config.fix_base = True
+    import_config.distance_scale = 1
+    # Get the urdf file path
+
+    # Finally import the robot
+    return omni.kit.commands.execute(
+        "URDFParseAndImportFile", urdf_path=urdf_path, import_config=import_config
+    )
 
 
 class Baxter(Robot):
@@ -51,19 +72,7 @@ class Baxter(Robot):
         self._end_effector = None
         # if not prim.IsValid():
         self._attach_gripper = attach_gripper
-        if urdf_path:
-            status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
-            import_config.merge_fixed_joints = False
-            import_config.convex_decomp = False
-            import_config.import_inertia_tensor = False
-            import_config.fix_base = True
-            import_config.distance_scale = 1
-            # Get the urdf file path
-
-            # Finally import the robot
-            result, self.baxter_prim = omni.kit.commands.execute(
-                "URDFParseAndImportFile", urdf_path=urdf_path, import_config=import_config
-            )
+        result, self.baxter_prim = import_baxter_robot(urdf_path)
         super().__init__(
             prim_path=self.baxter_prim,
             name=name,
@@ -73,7 +82,6 @@ class Baxter(Robot):
         )
         # home_config = [0.0, -0.55, 0.0, 0.75, 0.0, 1.26, 0.0, 0.0, -0.55, 0.0, 0.75, 0.0, 1.26, 0.0]
         # self.set_joints_default_state(positions=home_config)
-        self._grippers_dof_indices = {}
         if attach_gripper:
             self._left_end_effector_prim_path = self.baxter_prim + "/" + "left_gripper"
             self._right_end_effector_prim_path = self.baxter_prim + "/" + "right_gripper"
@@ -83,7 +91,6 @@ class Baxter(Robot):
                 joint_closed_positions=[0.0, 0.0],
                 joint_opened_positions=[0.020833, -0.020833],
             )
-            # self._left_gripper.initialize(self.baxter_prim, self.get_articulation_controller())
 
             self._right_gripper = ParallelGripper(
                 self._right_end_effector_prim_path,
@@ -91,28 +98,14 @@ class Baxter(Robot):
                 joint_closed_positions=[0.0, 0.0],
                 joint_opened_positions=[0.020833, -0.020833],
             )
-            # self.initialize_gripper()
-        return
 
-    def initialize_gripper(self, gripper: ParallelGripper, physics_sim_view=None, right_side=True):
-        self._grippers_dof_indices[gripper] = [None] * len(gripper.joint_prim_names)
-        for index in range(self.num_dof):
-            dof_handle = self._dc_interface.get_articulation_dof(self._handle, index)
-            dof_name = self._dc_interface.get_dof_name(dof_handle)
-            for j in range(len(gripper.joint_prim_names)):
-                if gripper.joint_prim_names[j] == dof_name:
-                    self._grippers_dof_indices[gripper][j] = index
-        # make sure that all gripper dof names were resolved
-        for i in range(len(gripper.joint_prim_names)):
-            if self._grippers_dof_indices[gripper][i] is None:
-                raise Exception("Not all gripper dof names were resolved to dof handles and dof indices.")
-        self._grippers_dof_indices[gripper] = np.array(self._grippers_dof_indices[gripper])
+    def initialize_gripper(self, gripper: ParallelGripper, physics_sim_view=None):
         gripper.initialize(
             physics_sim_view=physics_sim_view,
-            articulation_apply_action_func=self.right_apply_action if right_side else self.left_apply_action,
-            get_joint_positions_func=self.right_get_joint_positions if right_side else self.left_get_joint_positions,
+            articulation_apply_action_func=self.apply_action,
+            get_joint_positions_func=self.get_joint_positions,
             set_joint_positions_func=self.set_joint_positions,
-            dof_names=gripper.joint_prim_names,
+            dof_names=self.dof_names,
         )
 
     def initialize_grippers(self, physics_sim_view=None):
@@ -126,8 +119,8 @@ class Baxter(Robot):
         )
         self._left_end_effector.initialize(physics_sim_view)
 
-        self.initialize_gripper(self.left_gripper, physics_sim_view=physics_sim_view, right_side=False)
-        self.initialize_gripper(self.right_gripper, physics_sim_view=physics_sim_view, right_side=True)
+        self.initialize_gripper(self.left_gripper, physics_sim_view=physics_sim_view)
+        self.initialize_gripper(self.right_gripper, physics_sim_view=physics_sim_view)
 
     @property
     def attach_gripper(self) -> bool:
@@ -200,47 +193,76 @@ class Baxter(Robot):
             dof_index=self.left_gripper.joint_dof_indicies[1], mode="position"
         )
 
-    def apply_action(self, control_actions: ArticulationAction) -> None:
-        return self.apply_action(control_actions, self.right_gripper)
 
-    def apply_action(self, control_actions: ArticulationAction, gripper: ParallelGripper) -> None:
-        """Applies actions to all the joints of an articulation that corresponds to the ArticulationAction of the finger joints only.
+class CortexBaxter(MotionCommandedRobot):
+    def __init__(
+        self,
+        name: str,
+        urdf_path: str,
+        position: Optional[Sequence[float]] = None,
+        orientation: Optional[Sequence[float]] = None,
+        use_motion_commander=True,
+    ):
+        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow", "right_config.json")
 
-        Args:
-            control_actions (ArticulationAction): ArticulationAction for the left finger joint and the right finger joint respectively.
+        motion_policy_config = icl._process_policy_config(rmp_config_dir)
+        result, self.baxter_prim = import_baxter_robot(urdf_path)
+        super().__init__(
+            name=name,
+            prim_path=self.baxter_prim,
+            motion_policy_config=motion_policy_config,
+            position=position,
+            orientation=orientation,
+            settings=MotionCommandedRobot.Settings(
+                active_commander=use_motion_commander, smoothed_rmpflow=True, smoothed_commands=True
+            ),
+        )
+        left_rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow", "left_config.json")
+
+        left_motion_policy_config = icl._process_policy_config(left_rmp_config_dir)
+
+        self.left_motion_policy = RmpFlowSmoothed(**left_motion_policy_config)
+        articulation_motion_policy = ArticulationMotionPolicy(
+            robot_articulation=self, motion_policy=self.left_motion_policy, default_physics_dt=self.commanders_step_dt
+        )
+        target_prim = VisualCuboid("/World/left_motion_commander_target", size=0.01, color=np.array([0.15, 0.15, 0.15]))
+        self.left_arm_commander = MotionCommander(
+            self, articulation_motion_policy, target_prim, use_smoothed_commands=True
+        )
+
+        self.add_commander("left_arm", self.left_arm_commander)
+
+        self.right_gripper_commander = BaxterGripper(self, ["r_gripper_l_finger_joint", "r_gripper_r_finger_joint"])
+        self.add_commander("gripper", self.right_gripper_commander)
+        self.left_gripper_commander = BaxterGripper(self, ["l_gripper_l_finger_joint", "l_gripper_r_finger_joint"])
+        self.add_commander("left_gripper", self.left_gripper_commander)
+
+    def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None):
+        super().initialize(physics_sim_view)
+
+        verbose = True
+        kps=[536868] * (self.num_dof - 4) + [10000000] * 4,
+        kds=[68710400] * (self.num_dof - 4) + [2000000] * 4,
+        if verbose:
+            print("setting Baxter gains:")
+            print("- kps: {}".format(kps))
+            print("- kds: {}".format(kds))
+        self.get_articulation_controller().set_gains(kps, kds)
+
+class BaxterGripper(CortexGripper):
+    def __init__(self, articulation, joints):
+        super().__init__(
+            articulation_subset=ArticulationSubset(articulation, joints),
+            opened_width=0.041666,
+            closed_width=0.00,
+        )
+
+    def joints_to_width(self, joint_positions):
+        """ The width is simply the sum of the two prismatic joints.
         """
-        joint_actions = ArticulationAction()
-        if control_actions.joint_positions is not None:
-            joint_actions.joint_positions = [None] * self.num_dof
-            joint_actions.joint_positions[self._grippers_dof_indices[gripper][0]] = control_actions.joint_positions[0]
-            joint_actions.joint_positions[self._grippers_dof_indices[gripper][1]] = control_actions.joint_positions[1]
-        if control_actions.joint_velocities is not None:
-            joint_actions.joint_velocities = [None] * self.num_dof
-            joint_actions.joint_velocities[self._grippers_dof_indices[gripper][0]] = control_actions.joint_velocities[0]
-            joint_actions.joint_velocities[self._grippers_dof_indices[gripper][1]] = control_actions.joint_velocities[1]
-        if control_actions.joint_efforts is not None:
-            joint_actions.joint_efforts = [None] * self.num_dof
-            joint_actions.joint_efforts[self._grippers_dof_indices[gripper][0]] = control_actions.joint_efforts[0]
-            joint_actions.joint_efforts[self._grippers_dof_indices[gripper][1]] = control_actions.joint_efforts[1]
-        super().apply_action(control_actions=joint_actions)
-        return
+        return abs(joint_positions[0]) + abs(joint_positions[1])
 
-    def right_apply_action(self, control_actions: ArticulationAction) -> None:
-        self.apply_action(control_actions, self.right_gripper)
-
-    def left_apply_action(self, control_actions: ArticulationAction) -> None:
-        self.apply_action(control_actions, self.left_gripper)
-
-    def right_get_joint_positions(self, joint_indices=None) -> None:
-        indexes = self._grippers_dof_indices.get(self.right_gripper, [None] * len(self.right_gripper.joint_prim_names))
-        if indexes[0] is None:
-            return super().get_joint_positions()
-        else:
-            return super().get_joint_positions(indexes)
-
-    def left_get_joint_positions(self, joint_indices=None) -> None:
-        indexes = self._grippers_dof_indices.get(self.left_gripper, [None] * len(self.left_gripper.joint_prim_names))
-        if indexes[0] is None:
-            return super().get_joint_positions()
-        else:
-            return super().get_joint_positions(indexes)
+    def width_to_joints(self, width):
+        """ Each joint is half of the width since the width is their sum.
+        """
+        return np.array([width / 2, - width / 2])

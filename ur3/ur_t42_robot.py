@@ -84,33 +84,18 @@ class UR_T42_Robot(Robot):
             # self.initialize_gripper()
         return
 
-    def initialize_gripper(self, gripper: T42Gripper, physics_sim_view=None):
-        self._grippers_dof_indices = [None] * len(gripper.joint_prim_names)
-        for index in range(self.num_dof):
-            dof_handle = self._dc_interface.get_articulation_dof(self._handle, index)
-            dof_name = self._dc_interface.get_dof_name(dof_handle)
-            for j in range(len(gripper.joint_prim_names)):
-                if gripper.joint_prim_names[j] == dof_name:
-                    self._grippers_dof_indices[j] = index
-        # make sure that all gripper dof names were resolved
-        for i in range(len(gripper.joint_prim_names)):
-            if self._grippers_dof_indices[i] is None:
-                raise Exception("Not all gripper dof names were resolved to dof handles and dof indices.")
-        self._grippers_dof_indices = np.array(self._grippers_dof_indices)
-        gripper.initialize(
-            physics_sim_view=physics_sim_view,
-            articulation_apply_action_func=self.apply_action,
-            get_joint_positions_func=self.gripper_get_joint_positions,
-            set_joint_positions_func=self.set_joint_positions,
-            dof_names=gripper.joint_prim_names,
-        )
-
     def initialize_grippers(self, physics_sim_view=None):
 
         self._end_effector = RigidPrim(prim_path=self._end_effector_prim_path, name=self.name + "_end_effector")
         self._end_effector.initialize(physics_sim_view)
+        self.gripper.initialize(
+            physics_sim_view=physics_sim_view,
+            articulation_apply_action_func=self.apply_action,
+            get_joint_positions_func=self.gripper_get_joint_positions,
+            set_joint_positions_func=self.set_joint_positions,
+            dof_names=self.dof_names,
+        )
         
-        self.initialize_gripper(self.gripper, physics_sim_view=physics_sim_view)
     @property
     def attach_gripper(self) -> bool:
         """[summary]
@@ -156,31 +141,3 @@ class UR_T42_Robot(Robot):
             self._articulation_controller.switch_dof_control_mode(
                 dof_index=index, mode="position"
             )
-    def apply_action(self, control_actions: ArticulationAction) -> None:
-        """Applies actions to all the joints of an articulation that corresponds to the ArticulationAction of the finger joints only.
-
-        Args:
-            control_actions (ArticulationAction): ArticulationAction for the left finger joint and the right finger joint respectively.
-        """
-        joint_actions = ArticulationAction()
-        if control_actions.joint_positions is not None:
-            joint_actions.joint_positions = [None] * self.num_dof
-            for idx, index in enumerate(self._grippers_dof_indices):
-                joint_actions.joint_positions[index] = control_actions.joint_positions[idx]
-        if control_actions.joint_velocities is not None:
-            joint_actions.joint_velocities = [None] * self.num_dof
-            for idx, index in enumerate(self._grippers_dof_indices):
-                joint_actions.joint_velocities[index] = control_actions.joint_velocities[idx]
-        if control_actions.joint_efforts is not None:
-            joint_actions.joint_efforts = [None] * self.num_dof
-            for idx, index in enumerate(self._grippers_dof_indices):
-                joint_actions.joint_efforts[index] = control_actions.joint_efforts[idx]
-        super().apply_action(control_actions=joint_actions)
-        return
-
-    def gripper_get_joint_positions(self, joint_indices=None) -> None:
-        indexes = self._grippers_dof_indices
-        if indexes[0] is None:
-            return super().get_joint_positions()    
-        else:
-            return super().get_joint_positions(indexes)    
