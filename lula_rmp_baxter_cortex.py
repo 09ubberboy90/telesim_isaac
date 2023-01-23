@@ -102,11 +102,11 @@ class Subscriber(Node):
                 # )
                 add_reference_to_stage(
                     usd_path=self.rubiks_path,
-                    prim_path=f"/World/{name}",
+                    prim_path=f"/World/Obs/{name}",
                 )
                 self.existing_cubes[name] = XFormPrim(
-                    prim_path=f"/World/{name}",
-                    name="cube1",
+                    prim_path=f"/World/Obs/{name}",
+                    name=f"{name}",
                     position=pose[0],
                     orientation=pose[1],
                     scale=np.array([0.0056, 0.0056, 0.0056]),
@@ -189,18 +189,22 @@ class Subscriber(Node):
                 # # Query the current obstacle position
                 if self.global_tracking:  ## Make sure this is not enable when working with corte
                     if self.trigger["left"] and self.tracking_enabled["left"]:
-                        self.baxter_robot.left_gripper.close()
+                        self.baxter_robot.left_gripper.close(speed= .5)
                         # print("closing")
                     else:
-                        self.baxter_robot.left_gripper.open()
+                        self.baxter_robot.left_gripper.open(speed= .5)
                     if self.trigger["right"] and self.tracking_enabled["right"]:
-                        self.baxter_robot.gripper.close()
-                    else:
-                        self.baxter_robot.gripper.open()
+                        self.baxter_robot.gripper.close(speed= .5)
+                    elif not self.baxter_robot.gripper.is_open():
+                        self.baxter_robot.gripper.open(speed= .5)
 
                     if self.tracking_enabled["right"]:
+                        if self.right_cube_pose is not None:
+                            self.right_cube.set_world_pose(*self.right_cube_pose)
                         self.baxter_robot.arm.send_end_effector(target_pose=PosePq(*self.right_cube.get_world_pose()))
                     if self.tracking_enabled["left"]:
+                        if self.left_cube_pose is not None:
+                            self.left_cube.set_world_pose(*self.left_cube_pose)
                         self.baxter_robot.left_arm.send_end_effector(target_pose=PosePq(*self.left_cube.get_world_pose()))
 
 
@@ -235,7 +239,7 @@ class Subscriber(Node):
 
         self.stage = simulation_app.context.get_stage()
         self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.0, -0.975))
+        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.0, -1.0))
         self.table.GetAttribute("xformOp:rotateZYX").Set(Gf.Vec3f(0, 0, 90))
         self.table.GetAttribute("xformOp:scale").Set(Gf.Vec3f(0.7, 0.6, 1.15))
 
@@ -250,16 +254,16 @@ class Subscriber(Node):
         name = [
             "red_block",
             "green_block",
-            "blue_block",
+            # "blue_block",
             "yellow_block",
         ]
         color = [
             [1, 0, 0],
             [0, 1, 0],
-            [0, 0, 1],
+            # [0, 0, 1],
             [1, 1, 0],
         ]
-        for i in range(4):
+        for i in range(len(name)):
             # add_reference_to_stage(
             #     usd_path=self.rubiks_path,
             #     prim_path=f"/cortex/belief/objects/{name[i]}",
@@ -274,13 +278,14 @@ class Subscriber(Node):
             self.existing_cubes[name[i]] = VisualCuboid(
             f"/World/Obs/{name[i]}",
             name = name[i],
-            position=np.array([0.3+((i+1)%4)/10, 0.0, -0.18]),
+            position=np.array([0.3+((i+1)%len(name))/10, 0.0, -0.18]),
             orientation=np.array([1, 0, 0, 0]),
             size=0.04,
             color=np.array(color[i]),
             )
             obj = self.ros_world.scene.add(self.existing_cubes[name[i]])
-            self.baxter_robot.register_obstacle(obj)
+            ## TODO: Configure for when used in trackign or in cortex
+            # self.baxter_robot.register_obstacle(obj)
 
         self.left_cube = VisualCuboid(
             "/World/Control/left_cube",

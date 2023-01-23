@@ -242,7 +242,7 @@ class CortexBaxter(MotionCommandedRobot):
 
         verbose = True
         kps=[536868] * (self.num_dof - 4) + [10000000] * 4,
-        kds=[68710400] * (self.num_dof - 4) + [2000000] * 4,
+        kds=[68710400] * (self.num_dof - 4) + [200000] * 4,
         if verbose:
             print("setting Baxter gains:")
             print("- kps: {}".format(kps))
