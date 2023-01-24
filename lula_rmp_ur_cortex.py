@@ -32,7 +32,6 @@ simulation_app.update()
 from threading import Event, Thread
 
 import numpy as np
-import pyquaternion as pyq
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
 from geometry_msgs.msg import Pose, PoseStamped
@@ -40,8 +39,9 @@ from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
+import pyquaternion as pyq
 
-from baxter.baxter_robot import Baxter, CortexBaxter
+from ur3.ur_t42_robot import CortexUR
 
 import time
 
@@ -49,18 +49,16 @@ import time
 class Subscriber(Node):
     def __init__(self):
         super().__init__("isaac_sim_loop")
-        self.tracking_enabled = defaultdict(lambda: True)
+        self.tracking_enabled = True
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
         self.decider_activate = self.create_subscription(Bool, "activate_behavior", self.enable_behavior, 10)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
-        self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
-        self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.cube_sub = self.create_subscription(PoseStamped, "detected_cubes", self.get_cubes, 1)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
-        self.trigger = defaultdict(lambda: False)
+        self.trigger = False
         self.global_tracking = True
         self.robot_state = {}
         self.cubes_pose = {}
@@ -77,7 +75,7 @@ class Subscriber(Node):
 
     def enable_behavior(self, data: Bool):
         self.global_tracking = False
-        decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/block_stacking_behavior.py").make_decider_network(self.baxter_robot)
+        decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/block_stacking_behavior.py").make_decider_network(self.ur_robot)
         self.ros_world.add_decider_network(decider_network)
 
     def get_cubes(self, data: PoseStamped):
@@ -122,14 +120,13 @@ class Subscriber(Node):
 
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
-            self.tracking_enabled["right"] = False
+            self.tracking_enabled = False
         else:
-            self.tracking_enabled["right"] = True
-
+            self.tracking_enabled = True
 
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
-        offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles axis correction
+        offset_rot = pyq.Quaternion(w=0.5, x=-0.5, y=-0.5, z=0.5)  ## Handles axis correction
 
         q1 = mul_rot * q1
         q1 *= offset_rot
@@ -139,31 +136,9 @@ class Subscriber(Node):
             (q1.w, q1.x, q1.y, q1.z),
         )
 
-    def move_left_cube_callback(self, data: Pose):
-        # Make sure to respect the parity (Levi-Civita symbol)
-        if data.position.x > 3000:
-            self.tracking_enabled["left"] = False
-        else:
-            self.tracking_enabled["left"] = True
-
-
-        q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
-        mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
-        offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles axis correction
-
-        q1 = mul_rot * q1
-        q1 *= offset_rot
-
-        self.left_cube_pose = (
-            (-data.position.x, data.position.z, data.position.y),
-            (q1.w, q1.x, q1.y, q1.z),
-        )
 
     def right_trigger_callback(self, data: Bool):
-        self.trigger["right"] = data.data
-
-    def left_trigger_callback(self, data: Bool):
-        self.trigger["left"] = data.data
+        self.trigger = data.data
 
     def rclpy_spinner(self, event):
         while not event.is_set():
@@ -189,24 +164,15 @@ class Subscriber(Node):
 
                 # # Query the current obstacle position
                 if self.global_tracking:  ## Make sure this is not enable when working with corte
-                    if self.trigger["left"] and self.tracking_enabled["left"]:
-                        self.baxter_robot.left_gripper.close(speed= .5)
-                        # print("closing")
-                    else:
-                        self.baxter_robot.left_gripper.open(speed= .5)
-                    if self.trigger["right"] and self.tracking_enabled["right"]:
-                        self.baxter_robot.gripper.close(speed= .5)
-                    elif not self.baxter_robot.gripper.is_open():
-                        self.baxter_robot.gripper.open(speed= .5)
+                    if self.trigger and self.tracking_enabled:
+                        self.ur_robot.gripper.close(speed= .5)
+                    elif not self.ur_robot.gripper.is_open():
+                        self.ur_robot.gripper.open(speed= .5)
 
-                    if self.tracking_enabled["right"]:
+                    if self.tracking_enabled:
                         if self.right_cube_pose is not None:
                             self.right_cube.set_world_pose(*self.right_cube_pose)
-                        self.baxter_robot.arm.send_end_effector(target_pose=PosePq(*self.right_cube.get_world_pose()))
-                    if self.tracking_enabled["left"]:
-                        if self.left_cube_pose is not None:
-                            self.left_cube.set_world_pose(*self.left_cube_pose)
-                        self.baxter_robot.left_arm.send_end_effector(target_pose=PosePq(*self.left_cube.get_world_pose()))
+                        self.ur_robot.arm.send_end_effector(target_pose=PosePq(*self.right_cube.get_world_pose()))
 
 
         # Cleanup
@@ -234,21 +200,21 @@ class Subscriber(Node):
         print("Loading Complete")
         self.ros_world = CortexWorld(stage_units_in_meters=1.0)
 
-        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
 
-        self.baxter_robot = self.ros_world.add_robot(CortexBaxter(name="baxter", urdf_path=self.urdf_path))
+        self.ur_robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path))
 
         self.stage = simulation_app.context.get_stage()
         self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.0, -1.0))
-        self.table.GetAttribute("xformOp:rotateZYX").Set(Gf.Vec3f(0, 0, 90))
-        self.table.GetAttribute("xformOp:scale").Set(Gf.Vec3f(0.7, 0.6, 1.15))
+        self.table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.0,0.25,-0.8))
+        self.table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,0))
+        self.table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.86,1.15))
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
-            position=np.array([0.8, -0.1, 0.1]),
-            orientation=np.array([0, -1, 0, 0]),
+            position=np.array([0.3, -0.1, 0.15]),
+            orientation=np.array([0, -0.707, 0, -0.707]),
             size=0.005,
             color=np.array([0, 0, 1]),
         )
@@ -286,21 +252,14 @@ class Subscriber(Node):
             )
             obj = self.ros_world.scene.add(self.existing_cubes[name[i]])
             ## TODO: Configure for when used in trackign or in cortex
-            # self.baxter_robot.register_obstacle(obj)
+            # self.ur_robot.register_obstacle(obj)
 
-        self.left_cube = VisualCuboid(
-            "/World/Control/left_cube",
-            position=np.array([0.8, 0.1, 0.1]),
-            orientation=np.array([0, -1, 0, 0]),
-            size=0.005,
-            color=np.array([0, 0, 1]),
-        )
 
         ### DO NOT DELETE THIS !!! Will throw errors about undefined
         self.ros_world.reset()
         simulation_app.update()
-        self.ros_world.step()  # Step physics to trigger cortex_sim extension self.baxter_robot to be created.
-        self.baxter_robot.initialize()
+        self.ros_world.step()  # Step physics to trigger cortex_sim extension self.ur_robot to be created.
+        self.ur_robot.initialize()
 
 
     def create_action_graph(self):
@@ -333,13 +292,13 @@ class Subscriber(Node):
             print(e)
 
         # Setting the /Franka target prim to Publish JointState node
-        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.baxter_robot.prim_path])
+        set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self.ur_robot.prim_path])
 
         # Setting the /Franka target prim to Publish Transform Tree node
         set_target_prims(
             primPath="/ActionGraph/PublishTF",
             inputName="inputs:targetPrims",
-            targetPrimPaths=[self.baxter_robot.prim_path],
+            targetPrimPaths=[self.ur_robot.prim_path],
         )
 
         simulation_app.update()

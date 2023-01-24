@@ -13,6 +13,9 @@ import omni.kit.app
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.manipulators.grippers.gripper import Gripper
 
+from omni.isaac.cortex.robot import MotionCommandedRobot, CortexGripper, DirectSubsetCommander
+from omni.isaac.manipulators.grippers.parallel_gripper import ParallelGripper
+from omni.isaac.core.articulations import Articulation, ArticulationSubset
 
 class T42Gripper(Gripper):
 
@@ -239,3 +242,31 @@ class T42Gripper(Gripper):
                 joint_actions.joint_efforts[index] = control_actions.joint_efforts[idx]
         self._articulation_apply_action_func(control_actions=joint_actions)
         return
+
+class CortexT42Gripper(CortexGripper):
+    def __init__(self, articulation, joints):
+        super().__init__(
+            articulation_subset=ArticulationSubset(articulation, joints),
+            opened_width=4.71,
+            closed_width=0.00,
+        )
+
+    def joints_to_width(self, joint_positions):
+        """ The width is simply the sum of the all prismatic joints.
+        """
+        return sum(abs(v) for v in joint_positions)
+
+
+    def width_to_joints(self, width):
+        """ Each joint is half of the width since the width is their sum.
+        """
+
+        half_width = width / 2
+        a = half_width
+        b = 0.0 
+        if a > 1.57:
+            a = 1.57
+            b = half_width - 1.57
+        return np.array([a, b, a, b])
+
+

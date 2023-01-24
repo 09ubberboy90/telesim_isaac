@@ -20,6 +20,7 @@ from omni.isaac.motion_generation import (ArticulationMotionPolicy,
                                           RmpFlowSmoothed)
 from omni.isaac.motion_generation.lula import RmpFlow
 from omni.usd import Gf
+import omni.isaac.motion_generation.interface_config_loader as icl
 
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
@@ -232,38 +233,35 @@ class Subscriber(Node):
 
         simulation_app.update()
 
-    def setup_ik(self):
-        self.rmp_config_dir = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config"
+    # def setup_ik(self):
+    #     self.rmp_config_dir = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config"
+    #     rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config", "rmp_config.json")
 
-        self.rmpflow = RmpFlowSmoothed(
-            robot_description_path=os.path.join(self.rmp_config_dir, "ur3_t42_robot_description.yaml"),
-            urdf_path=self.urdf_path,
-            rmpflow_config_path=os.path.join(self.rmp_config_dir, "ur3_t42_rmpflow_config.yaml"),
-            end_effector_frame_name="t42_base_link",  # This frame name must be present in the URDF
-            evaluations_per_frame=5,
-        )
+    #     left_motion_policy_config = icl._process_policy_config(rmp_config_dir)
 
-        # Uncomment this line to visualize the collision spheres in the robot_description YAML file
-        # self.rmpflow.visualize_collision_spheres()
-        # self.rmpflow.set_ignore_state_updates(True)
+    #     self.rmpflow = RmpFlowSmoothed(**left_motion_policy_config)
 
-        physics_dt = 1 / 60.0
-        self.articulation_rmpflow = ArticulationMotionPolicy(self.ur_t42_robot, self.rmpflow, physics_dt)
+    #     # Uncomment this line to visualize the collision spheres in the robot_description YAML file
+    #     # self.rmpflow.visualize_collision_spheres()
+    #     # self.rmpflow.set_ignore_state_updates(True)
 
-        self.articulation_controller = self.ur_t42_robot.get_articulation_controller()
+    #     physics_dt = 1 / 60.0
+    #     self.articulation_rmpflow = ArticulationMotionPolicy(self.ur_t42_robot, self.rmpflow, physics_dt)
 
-        self.articulation_controller.set_gains(kps=[67108]*(self.ur_t42_robot.num_dof-4)+[10000000]*4, kds=[107374]*(self.ur_t42_robot.num_dof-4)+[2000000]*4)
+    #     self.articulation_controller = self.ur_t42_robot.get_articulation_controller()
 
-        # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
-        self.cube = VisualCuboid(
-            "/World/cube",
-            position=np.array([0.4, -0.1, 0.2]),
-            orientation=np.array([0.707,0.0,-0.707,0.0]),
-            size=0.05,
-            color=np.array([0, 0, 1]),
-        )
-        fake_table = FixedCuboid("/World/fake_table", position=np.array([0.28,0,-0.04]), scale=np.array([18.7,28.5,0.07]))
-        self.rmpflow.add_obstacle(fake_table)
+    #     self.articulation_controller.set_gains(kps=[67108]*(self.ur_t42_robot.num_dof-4)+[10000000]*4, kds=[107374]*(self.ur_t42_robot.num_dof-4)+[200000]*4)
+
+    #     # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
+    #     self.cube = VisualCuboid(
+    #         "/World/cube",
+    #         position=np.array([0.4, -0.1, 0.2]),
+    #         orientation=np.array([0.707,0.0,-0.707,0.0]),
+    #         size=0.05,
+    #         color=np.array([0, 0, 1]),
+    #     )
+    #     fake_table = FixedCuboid("/World/fake_table", position=np.array([0.28,0,-0.04]), scale=np.array([18.7,28.5,0.07]))
+    #     self.rmpflow.add_obstacle(fake_table)
 
         # print(self.articulation_controller._articulation_view.dof_names)
 
