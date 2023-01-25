@@ -186,8 +186,6 @@ class CortexUR(MotionCommandedRobot):
                 active_commander=use_motion_commander, smoothed_rmpflow=True, smoothed_commands=True
             ),
         )
-        self.motion_policy.set_ignore_state_updates(True)
-        self.motion_policy.visualize_collision_spheres()
 
         self.right_gripper_commander = CortexT42Gripper(self, ["swivel_2_to_finger_2_1","finger_2_1_to_finger_2_2","swivel_1_to_finger_1_1","finger_1_1_to_finger_1_2"])
         self.add_commander("gripper", self.right_gripper_commander)

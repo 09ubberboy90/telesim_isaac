@@ -128,14 +128,16 @@ class Subscriber(Node):
 
 
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
+        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=-0.707, z=0.)  ## Handles axis correction
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
         offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles axis correction
 
+        q1 = seminar_rot * q1
         q1 = mul_rot * q1
         q1 *= offset_rot
 
         self.right_cube_pose = (
-            (-data.position.x, data.position.z, data.position.y),
+            (data.position.z, data.position.x, data.position.y),
             (q1.w, q1.x, q1.y, q1.z),
         )
 

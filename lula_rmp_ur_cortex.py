@@ -209,11 +209,10 @@ class Subscriber(Node):
         self.table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.0,0.25,-0.8))
         self.table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,0))
         self.table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.86,1.15))
-
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
-            position=np.array([0.3, -0.1, 0.15]),
+            position=np.array([0.3, 0.1, 0.2]),
             orientation=np.array([0, -0.707, 0, -0.707]),
             size=0.005,
             color=np.array([0, 0, 1]),
