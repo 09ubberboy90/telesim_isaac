@@ -247,8 +247,8 @@ class CortexT42Gripper(CortexGripper):
     def __init__(self, articulation, joints):
         super().__init__(
             articulation_subset=ArticulationSubset(articulation, joints),
-            opened_width=4.71,
-            closed_width=0.00,
+            opened_width=3.3,
+            closed_width=0.0,
         )
 
     def joints_to_width(self, joint_positions):
@@ -261,12 +261,11 @@ class CortexT42Gripper(CortexGripper):
         """ Each joint is half of the width since the width is their sum.
         """
 
-        half_width = width / 2
-        a = half_width
-        b = 0.0 
-        if a > 1.57:
-            a = 1.57
-            b = half_width - 1.57
-        return np.array([a, b, a, b])
+        a = (-width+3.3) / 2
+        # b = 0.0 
+        # if a > 1.7:
+        #     a = 1.7
+        #     # b = half_width - 1.57
+        return np.array([a, 0.0, a, 0.0])
 
 

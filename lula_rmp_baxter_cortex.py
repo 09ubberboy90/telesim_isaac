@@ -14,21 +14,21 @@ from omni.isaac.core.objects.cuboid import (DynamicCuboid, FixedCuboid,
                                             VisualCuboid)
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.utils.extensions import (disable_extension,
-                                              enable_extension,
-                                              get_extension_path_from_name)
-from omni.isaac.core.utils.prims import get_prim_at_path, is_prim_path_valid
+                                              enable_extension)
+from omni.isaac.core.utils.prims import (delete_prim, get_prim_at_path,
+                                         is_prim_path_valid)
 from omni.isaac.core.utils.stage import (add_reference_to_stage,
                                          is_stage_loading)
 from omni.isaac.core_nodes.scripts.utils import set_target_prims
-from omni.usd import Gf
+from omni.isaac.cortex.cortex_utils import load_behavior_module
 from omni.isaac.cortex.cortex_world import CortexWorld
 from omni.isaac.cortex.motion_commander import PosePq
-from omni.isaac.cortex.cortex_utils import load_behavior_module
 
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
 
 simulation_app.update()
+import time
 from threading import Event, Thread
 
 import numpy as np
@@ -38,12 +38,9 @@ import rclpy
 from geometry_msgs.msg import Pose, PoseStamped
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
-from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 
 from baxter.baxter_robot import Baxter, CortexBaxter
-
-import time
 
 
 class Subscriber(Node):
@@ -90,7 +87,6 @@ class Subscriber(Node):
 
 
     def create_cubes(self):
-
         for name, pose in self.cubes_pose.items():
             if name not in self.existing_cubes.keys():
                 # self.existing_cubes[name] = VisualCuboid(
@@ -128,13 +124,13 @@ class Subscriber(Node):
 
 
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
-        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=-0.707, z=0.)  ## Handles axis correction
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
         offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles axis correction
+        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=-.707)  ## Handles axis correction
 
-        q1 = seminar_rot * q1
         q1 = mul_rot * q1
         q1 *= offset_rot
+        q1 = seminar_rot *q1
 
         self.right_cube_pose = (
             (data.position.z, data.position.x, data.position.y),
@@ -184,6 +180,7 @@ class Subscriber(Node):
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
+                self.baxter_robot.motion_policy.update_world()
 
                 # print(f"Main Loop: {time.time()-self.time}")
                 # self.time = time.time()
@@ -241,10 +238,27 @@ class Subscriber(Node):
         self.baxter_robot = self.ros_world.add_robot(CortexBaxter(name="baxter", urdf_path=self.urdf_path))
 
         self.stage = simulation_app.context.get_stage()
-        self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        self.table.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.6, 0.0, -1.0))
-        self.table.GetAttribute("xformOp:rotateZYX").Set(Gf.Vec3f(0, 0, 90))
-        self.table.GetAttribute("xformOp:scale").Set(Gf.Vec3f(0.7, 0.6, 1.15))
+        # self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
+        delete_prim("/Root/table_low_327")
+        add_reference_to_stage(
+            usd_path=assets_root_path + "/Isaac/Environments/Office/Props/SM_TableC.usd",
+            prim_path=f"/World/Tables/table",
+        )
+        self.table = XFormPrim(
+            prim_path=f"/World/Tables/table",
+            name="table",
+            position=[0.58,-0.04,-0.77],
+            orientation=np.array([1, 0, 0, 0]),
+            scale=[1, 0.85, 1.25],
+        )  # w,x,y,z
+        self.cortex_table = FixedCuboid(
+            "/World/Tables/cortex_table",
+            position=np.array([0.58, -0.04, -0.27]),
+            orientation=np.array([1, 0, 0, 0]),
+            color=np.array([1, 1, 1]),
+            scale=[0.55, 1.0, 0.05],
+
+        )
 
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
@@ -292,7 +306,7 @@ class Subscriber(Node):
 
         self.left_cube = VisualCuboid(
             "/World/Control/left_cube",
-            position=np.array([0.8, 0.1, 0.1]),
+            position=np.array([-0.1, 0.5, 0.1]), ## out of the way
             orientation=np.array([0, -1, 0, 0]),
             size=0.005,
             color=np.array([0, 0, 1]),
@@ -303,7 +317,7 @@ class Subscriber(Node):
         simulation_app.update()
         self.ros_world.step()  # Step physics to trigger cortex_sim extension self.baxter_robot to be created.
         self.baxter_robot.initialize()
-
+        self.baxter_robot.motion_policy.add_obstacle(self.cortex_table)
 
     def create_action_graph(self):
         try:

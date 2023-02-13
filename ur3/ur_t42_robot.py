@@ -187,15 +187,17 @@ class CortexUR(MotionCommandedRobot):
             ),
         )
 
-        self.right_gripper_commander = CortexT42Gripper(self, ["swivel_2_to_finger_2_1","finger_2_1_to_finger_2_2","swivel_1_to_finger_1_1","finger_1_1_to_finger_1_2"])
+        self.right_gripper_commander = CortexT42Gripper(self, ["swivel_1_to_finger_1_1","finger_1_1_to_finger_1_2", "swivel_2_to_finger_2_1","finger_2_1_to_finger_2_2"])
         self.add_commander("gripper", self.right_gripper_commander)
 
     def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None):
         super().initialize(physics_sim_view)
 
         verbose = True
-        kps=[67108] * (self.num_dof - 4) + [10000000] * 4,
-        kds=[107374] * (self.num_dof - 4) + [200000] * 4,
+        # kps=[67108] * (self.num_dof - 4) + [10000000] * 4,
+        # kds=[107374] * (self.num_dof - 4) + [200000] * 4,
+        kps=[67108] * (self.num_dof - 4) + [1000000] * 4,
+        kds=[107374] * (self.num_dof - 4) + [100000] * 4,
         if verbose:
             print("setting UR gains:")
             print("- kps: {}".format(kps))

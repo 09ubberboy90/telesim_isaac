@@ -42,6 +42,7 @@ from std_msgs.msg import Bool
 import pyquaternion as pyq
 
 from ur3.ur_t42_robot import CortexUR
+from omni.isaac.core.utils.prims import delete_prim, get_prim_at_path
 
 import time
 
@@ -128,11 +129,14 @@ class Subscriber(Node):
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
         offset_rot = pyq.Quaternion(w=0.5, x=-0.5, y=-0.5, z=0.5)  ## Handles axis correction
 
+        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=0.707)  ## Handles axis correction
+
         q1 = mul_rot * q1
         q1 *= offset_rot
+        q1 = seminar_rot * q1
 
         self.right_cube_pose = (
-            (-data.position.x, data.position.z, data.position.y),
+            (-data.position.z, -data.position.x, data.position.y),
             (q1.w, q1.x, q1.y, q1.z),
         )
 
@@ -157,6 +161,7 @@ class Subscriber(Node):
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
+                self.ur_robot.motion_policy.update_world()
 
                 # print(f"Main Loop: {time.time()-self.time}")
                 # self.time = time.time()
@@ -165,9 +170,13 @@ class Subscriber(Node):
                 # # Query the current obstacle position
                 if self.global_tracking:  ## Make sure this is not enable when working with corte
                     if self.trigger and self.tracking_enabled:
-                        self.ur_robot.gripper.close(speed= .5)
+                        ## Passing None need to make sure the self.command = None is commented out in the cortex file
+                        self.ur_robot.gripper.close(speed= None)
+                        # print("Closing gripper")
                     elif not self.ur_robot.gripper.is_open():
-                        self.ur_robot.gripper.open(speed= .5)
+                        ## Passing None need to make sure the self.command = None is commented out in the cortex file
+                        self.ur_robot.gripper.open(speed= None)
+                        # print("Opening gripper")
 
                     if self.tracking_enabled:
                         if self.right_cube_pose is not None:
@@ -205,10 +214,25 @@ class Subscriber(Node):
         self.ur_robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path))
 
         self.stage = simulation_app.context.get_stage()
-        self.table = self.stage.GetPrimAtPath("/Root/table_low_327")
-        self.table.GetAttribute('xformOp:translate').Set(Gf.Vec3f(0.0,0.25,-0.8))
-        self.table.GetAttribute('xformOp:rotateZYX').Set(Gf.Vec3f(0,0,0))
-        self.table.GetAttribute('xformOp:scale').Set(Gf.Vec3f(1,0.86,1.15))
+        delete_prim("/Root/table_low_327")
+        self.table = FixedCuboid(
+            "/World/Tables/table",
+            position=np.array([0.1, 0.25, -0.4]),
+            orientation=np.array([1, 0, 0, 0]),
+            color=np.array([1, 1, 1]),
+            size=0.8,
+
+        )
+        self.cortex_table = FixedCuboid(
+            "/World/Tables/cortex_table",
+            position=np.array([0.1, 0.25, -0.085]),
+            orientation=np.array([1, 0, 0, 0]),
+            color=np.array([1, 1, 1]),
+            size=0.8,
+            scale=[1, 1, 0.1]
+
+        )
+
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
@@ -259,6 +283,8 @@ class Subscriber(Node):
         simulation_app.update()
         self.ros_world.step()  # Step physics to trigger cortex_sim extension self.ur_robot to be created.
         self.ur_robot.initialize()
+        self.ur_robot.motion_policy.add_obstacle(self.cortex_table)
+        # self.ur_robot.motion_policy.visualize_collision_spheres()
 
 
     def create_action_graph(self):
