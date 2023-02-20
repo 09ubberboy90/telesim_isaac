@@ -20,8 +20,8 @@ import pyquaternion as pyq
 import rclpy
 from geometry_msgs.msg import Pose
 from std_msgs.msg import Bool
+from sensor_msgs.msg import JointState
 from omni.isaac.core.utils.stage import add_reference_to_stage
-
 from general_world import TeleopWorld
 from ur3.ur_t42_robot import CortexUR
 
@@ -29,7 +29,20 @@ class Baxter_World(TeleopWorld):
     def __init__(self):
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
+        self.gripper_bool = True
+        self.controller_sub = self.create_subscription(Bool, "controller_switch", self.controller_switch, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
+        self.gripper_sub = self.create_subscription(JointState, "senseglove_motor", self.gripper_callback, 10)
+
+    def controller_switch(self, data: Bool):
+        self.gripper_bool = data.data
+
+    def set_limits(self, value):
+        return min(max(value*np.pi/180.0, 0.0), 150)
+
+    def gripper_callback(self, data: JointState):
+
+        self.robot.gripper.set_gripper([self.set_limits(data.position[0]),0.0, self.set_limits(data.position[1]),0.0])
 
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
@@ -42,10 +55,12 @@ class Baxter_World(TeleopWorld):
         offset_rot = pyq.Quaternion(w=0.5, x=-0.5, y=-0.5, z=0.5)  ## Handles axis correction
 
         seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=0.707)  ## Handles axis correction
+        test = pyq.Quaternion(w=-0.383, x=-0.924, y=0.0, z=0.0)  ## Handles axis correction
 
         q1 = mul_rot * q1
         q1 *= offset_rot
         q1 = seminar_rot * q1
+        q1 *= test
 
         self.right_cube_pose = (
             (-data.position.z, -data.position.x, data.position.y),
@@ -59,14 +74,15 @@ class Baxter_World(TeleopWorld):
     def robot_run_simulation(self):
         self.robot.motion_policy.update_world()
         if self.global_tracking:  ## Make sure this is not enable when working with corte
-            if self.trigger and self.tracking_enabled["right"]:
-                ## Passing None need to make sure the self.command = None is commented out in the cortex file
-                self.robot.gripper.close(speed= None)
-                # print("Closing gripper")
-            elif not self.robot.gripper.is_open():
-                ## Passing None need to make sure the self.command = None is commented out in the cortex file
-                self.robot.gripper.open(speed= None)
-                # print("Opening gripper")
+            if (not self.gripper_bool) and self.tracking_enabled["right"]:
+                if self.trigger:
+                    ## Passing None need to make sure the self.command = None is commented out in the cortex file
+                    self.robot.gripper.close(speed= None)
+                    # print("Closing gripper")
+                elif not self.robot.gripper.is_open():
+                    ## Passing None need to make sure the self.command = None is commented out in the cortex file
+                    self.robot.gripper.open(speed= None)
+                    # print("Opening gripper")
 
             if self.tracking_enabled["right"]:
                 if self.right_cube_pose is not None:
@@ -81,7 +97,7 @@ class Baxter_World(TeleopWorld):
 
         self.robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path))
         
-        self.table = FixedCuboid(
+        self.table = VisualCuboid(
             "/World/Tables/table",
             position=np.array([0.1, 0.25, -0.4]),
             orientation=np.array([1, 0, 0, 0]),
@@ -91,7 +107,7 @@ class Baxter_World(TeleopWorld):
         )
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
-            position=np.array([0.1, 0.25, -0.085]),
+            position=np.array([0.1, 0.25, -0.06]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([1, 1, 1]),
             size=0.8,
@@ -102,7 +118,7 @@ class Baxter_World(TeleopWorld):
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
-            position=np.array([0.07, 0.3, 0.15]),
+            position=np.array([0.07, 0.3, 0.12]),
             orientation=np.array([0.707,0.0,-0.707,0.0]),
             size=0.005,
             color=np.array([0, 0, 1]),

@@ -250,7 +250,8 @@ class CortexT42Gripper(CortexGripper):
             opened_width=3.3,
             closed_width=0.0,
         )
-
+        self.direct_control = False
+        self.last_joint_position = None
     def joints_to_width(self, joint_positions):
         """ The width is simply the sum of the all prismatic joints.
         """
@@ -266,6 +267,26 @@ class CortexT42Gripper(CortexGripper):
         # if a > 1.7:
         #     a = 1.7
         #     # b = half_width - 1.57
+        # print(a)
         return np.array([a, 0.0, a, 0.0])
 
+    def set_gripper(self, joint_positions):
+        if joint_positions is None:
+            return False
+        if len(joint_positions) != self.articulation_subset.num_joints:
+            print("[Error] joint_positions must be of length 4")
+            return False
+        self.direct_control = True
+        self.last_joint_position = joint_positions
+        return True
 
+    def step(self, dt):
+        """ Step is called every cycle as the processing engine for the commands.
+        """
+        if self.direct_control:
+            if self.last_joint_position is not None:
+                self.articulation_subset.apply_action(joint_positions=self.last_joint_position)
+            self.direct_control = False
+        else:
+            super().step(dt)
+        
