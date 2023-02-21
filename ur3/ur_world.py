@@ -38,7 +38,7 @@ class Baxter_World(TeleopWorld):
         self.gripper_bool = data.data
 
     def set_limits(self, value):
-        return min(max(value*np.pi/180.0, 0.0), 150)
+        return min(max(value, 0.0), 130) * np.pi/180.0
 
     def gripper_callback(self, data: JointState):
 
