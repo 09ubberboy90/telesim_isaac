@@ -36,9 +36,10 @@ class Baxter_World(TeleopWorld):
 
     def controller_switch(self, data: Bool):
         self.gripper_bool = data.data
+        self.robot.gripper.direct_control = data.data
 
     def set_limits(self, value):
-        return min(max(value, 0.0), 130) * np.pi/180.0
+        return min(max(value, 0.0), 115) * np.pi/180.0
 
     def gripper_callback(self, data: JointState):
 
@@ -88,7 +89,6 @@ class Baxter_World(TeleopWorld):
                 if self.right_cube_pose is not None:
                     self.right_cube.set_world_pose(*self.right_cube_pose)
                 self.robot.arm.send_end_effector(target_pose=PosePq(*self.right_cube.get_world_pose()))
-
 
 
     def setup_robot_scene(self):

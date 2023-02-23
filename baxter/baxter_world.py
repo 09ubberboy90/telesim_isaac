@@ -124,7 +124,7 @@ class Baxter_World(TeleopWorld):
         )  # w,x,y,z
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
-            position=np.array([0.58, -0.04, -0.27]),
+            position=np.array([0.58, -0.04, -0.25]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([1, 1, 1]),
             scale=[0.55, 1.0, 0.05],
@@ -147,7 +147,7 @@ class Baxter_World(TeleopWorld):
             color=np.array([0, 0, 1]),
         )
 
-        self.create_cortex_cubes()
+        # self.create_cortex_cubes()
 
     def create_cortex_cubes(self):
         name = [

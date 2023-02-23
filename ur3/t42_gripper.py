@@ -247,7 +247,7 @@ class CortexT42Gripper(CortexGripper):
     def __init__(self, articulation, joints):
         super().__init__(
             articulation_subset=ArticulationSubset(articulation, joints),
-            opened_width=3.3,
+            opened_width=3.5,
             closed_width=0.0,
         )
         self.direct_control = False
@@ -255,14 +255,15 @@ class CortexT42Gripper(CortexGripper):
     def joints_to_width(self, joint_positions):
         """ The width is simply the sum of the all prismatic joints.
         """
-        return sum(abs(v) for v in joint_positions)
+        print(f"Joint_Pos: {sum(abs(v) for v in joint_positions)}")
+        return -sum(abs(v) for v in joint_positions)+3.5
 
 
     def width_to_joints(self, width):
         """ Each joint is half of the width since the width is their sum.
         """
 
-        a = (-width+3.3) / 2
+        a = (-width+3.5) / 2
         # b = 0.0 
         # if a > 1.7:
         #     a = 1.7

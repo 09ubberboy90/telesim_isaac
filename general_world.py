@@ -23,7 +23,7 @@ import rclpy
 from geometry_msgs.msg import Pose, PoseStamped
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from rclpy.node import Node
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Empty
 
 
 class TeleopWorld(Node):
@@ -33,7 +33,8 @@ class TeleopWorld(Node):
         self._robot = None
         self.tracking_enabled = defaultdict(lambda: True)
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
-        self.decider_activate = self.create_subscription(Bool, "activate_behavior", self.enable_behavior, 10)
+        self.decider_activate = self.create_subscription(Empty, "activate_behavior", self.enable_behavior, 10)
+        self.decider_clear = self.create_subscription(Empty, "clear_behavior", self.clear_behavior, 10)
         self.cube_sub = self.create_subscription(PoseStamped, "detected_cubes", self.get_cubes, 1)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
@@ -68,9 +69,14 @@ class TeleopWorld(Node):
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
 
-    def enable_behavior(self, data: Bool):
+    def clear_behavior(self, data: Empty):
+        ## TODO: Find out why it doesn't work
+        self.ros_world._logical_state_monitors.clear()
+        self.ros_world._behaviors.clear()
+
+    def enable_behavior(self, data: Empty):
         self.global_tracking = False
-        decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/block_stacking_behavior.py").make_decider_network(self._robot)
+        decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/garment_sm.py").make_decider_network(self._robot)
         self.ros_world.add_decider_network(decider_network)
 
     def get_cubes(self, data: PoseStamped):
@@ -163,6 +169,7 @@ class TeleopWorld(Node):
         self.ros_world.step()  # Step physics to trigger cortex_sim extension self._robot to be created.
         self._robot.initialize()
         self._robot.motion_policy.add_obstacle(self.cortex_table)
+        # self._robot.motion_policy.visualize_collision_spheres()
 
     def create_action_graph(self):
         try:

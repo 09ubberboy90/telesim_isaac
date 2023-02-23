@@ -196,8 +196,8 @@ class CortexUR(MotionCommandedRobot):
         verbose = True
         # kps=[67108] * (self.num_dof - 4) + [10000000] * 4,
         # kds=[107374] * (self.num_dof - 4) + [200000] * 4,
-        kps=[34.90659] * (self.num_dof - 2) + [2] * 2,
-        kds=[349.06586] * (self.num_dof - 4) + [1] * 2 + [50] * 2,
+        kps=[34.90659] * (self.num_dof),
+        kds=[349.06586] * (self.num_dof - 4) + [1] * 4 ,
         if verbose:
             print("setting UR gains:")
             print("- kps: {}".format(kps))
