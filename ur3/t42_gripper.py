@@ -255,7 +255,7 @@ class CortexT42Gripper(CortexGripper):
     def joints_to_width(self, joint_positions):
         """ The width is simply the sum of the all prismatic joints.
         """
-        print(f"Joint_Pos: {sum(abs(v) for v in joint_positions)}")
+        # print(f"Joint_Pos: {sum(abs(v) for v in joint_positions)}")
         return -sum(abs(v) for v in joint_positions)+3.5
 
 

@@ -99,19 +99,21 @@ class Baxter_World(TeleopWorld):
         
         self.table = VisualCuboid(
             "/World/Tables/table",
-            position=np.array([0.1, 0.25, -0.4]),
+            position=np.array([0.0, 0.25, -0.4]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([1, 1, 1]),
             size=0.8,
+            scale=[1.8625, 1, 1]
 
         )
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
-            position=np.array([0.1, 0.25, -0.06]),
+            position=np.array([0.0, 0.25, -0.06]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([1, 1, 1]),
             size=0.8,
-            scale=[1, 1, 0.1]
+            scale=[1.8625, 1, 0.1]
+            
 
         )
 
