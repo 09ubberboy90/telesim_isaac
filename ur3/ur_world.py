@@ -55,7 +55,7 @@ class Baxter_World(TeleopWorld):
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
         offset_rot = pyq.Quaternion(w=0.5, x=-0.5, y=-0.5, z=0.5)  ## Handles axis correction
 
-        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=0.707)  ## Handles axis correction
+        seminar_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.0, z=1.0)  ## Handles axis correction
         test = pyq.Quaternion(w=-0.383, x=-0.924, y=0.0, z=0.0)  ## Handles axis correction
 
         q1 = mul_rot * q1
@@ -64,7 +64,7 @@ class Baxter_World(TeleopWorld):
         q1 *= test
 
         self.right_cube_pose = (
-            (-data.position.z, -data.position.x, data.position.y),
+            (data.position.x, -data.position.z, data.position.y),
             (q1.w, q1.x, q1.y, q1.z),
         )
 
@@ -108,7 +108,7 @@ class Baxter_World(TeleopWorld):
         )
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
-            position=np.array([0.0, 0.25, -0.06]),
+            position=np.array([0.0, 0.25, -0.059]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([1, 1, 1]),
             size=0.8,
@@ -121,7 +121,7 @@ class Baxter_World(TeleopWorld):
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
             position=np.array([0.07, 0.3, 0.12]),
-            orientation=np.array([0.707,0.0,-0.707,0.0]),
+            orientation=np.array([0.0,-0.707,0.0,-0.707]),
             size=0.005,
             color=np.array([0, 0, 1]),
         )
