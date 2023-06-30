@@ -247,7 +247,7 @@ class CortexT42Gripper(CortexGripper):
     def __init__(self, articulation, joints):
         super().__init__(
             articulation_subset=ArticulationSubset(articulation, joints),
-            opened_width=3.5,
+            opened_width=1.0,
             closed_width=0.0,
         )
         self.direct_control = False

@@ -9,6 +9,7 @@ from omni.isaac.core.utils.extensions import (disable_extension,
                                               enable_extension)
 from omni.isaac.cortex.motion_commander import PosePq
 
+
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
 
@@ -29,7 +30,7 @@ class Baxter_World(TeleopWorld):
     def __init__(self):
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
-        self.gripper_bool = True
+        self.gripper_bool = False
         self.controller_sub = self.create_subscription(Bool, "controller_switch", self.controller_switch, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.gripper_sub = self.create_subscription(JointState, "senseglove_motor", self.gripper_callback, 10)
@@ -52,16 +53,17 @@ class Baxter_World(TeleopWorld):
             self.tracking_enabled["right"] = True
 
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
-        mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
-        offset_rot = pyq.Quaternion(w=0.5, x=-0.5, y=-0.5, z=0.5)  ## Handles axis correction
+        mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction ## Maybe needs to be removed and other adjusted
+        x_rot = pyq.Quaternion(w=0.707, x=-0.707, y=-0.0, z=0.0)  ## Handles X rotation
+        y_rot = pyq.Quaternion(w=0.707, x=0.0, y=-0.707, z=0.0)  ## Handles Y rotation
 
-        seminar_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.0, z=1.0)  ## Handles axis correction
-        test = pyq.Quaternion(w=-0.383, x=-0.924, y=0.0, z=0.0)  ## Handles axis correction
+        offset_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.0, z=1.0)  ## Handles Changing axis
 
         q1 = mul_rot * q1
-        q1 *= offset_rot
-        q1 = seminar_rot * q1
-        q1 *= test
+        q1 *= x_rot
+        q1 *= y_rot
+        
+        q1 = offset_rot * q1
 
         self.right_cube_pose = (
             (data.position.x, -data.position.z, data.position.y),
@@ -96,21 +98,32 @@ class Baxter_World(TeleopWorld):
         self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
 
         self.robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path))
-        
-        self.table = VisualCuboid(
-            "/World/Tables/table",
-            position=np.array([0.0, 0.25, -0.4]),
-            orientation=np.array([1, 0, 0, 0]),
-            color=np.array([1, 1, 1]),
-            size=0.8,
-            scale=[1.8625, 1, 1]
-
+        add_reference_to_stage(
+            usd_path=self.assets_root_path + "/Isaac/Environments/Office/Props/SM_TableC.usd",
+            prim_path=f"/World/Tables/table",
         )
+        self.table = XFormPrim(
+            prim_path=f"/World/Tables/table",
+            name="table",
+            position=np.array([0.0, 0.25, -0.76]),
+            orientation=np.array([0.707, 0, 0, 0.707]),
+            scale=[1.4, 1.3, 1.7]
+        )  # w,x,y,z
+
+        # self.table2 = VisualCuboid(
+        #     "/World/Tables/table",
+        #     position=np.array([0.0, 0.25, -0.4]),
+        #     orientation=np.array([1, 0, 0, 0]),
+        #     color=np.array([0, 0.2196, 0.3961]),
+        #     size=0.8,
+        #     scale=[1.8625, 1, 1]
+
+        # )
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
-            position=np.array([0.0, 0.25, -0.059]),
+            position=np.array([0.0, 0.25, -0.08]),
             orientation=np.array([1, 0, 0, 0]),
-            color=np.array([1, 1, 1]),
+            color=np.array([0, 0.2196, 0.3961]),
             size=0.8,
             scale=[1.8625, 1, 0.1]
             
@@ -126,7 +139,7 @@ class Baxter_World(TeleopWorld):
             color=np.array([0, 0, 1]),
         )
 
-        self.create_cortex_cubes()
+        # self.create_cortex_cubes()
 
     def create_cortex_cubes(self):
         name = [

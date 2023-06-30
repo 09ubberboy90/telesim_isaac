@@ -118,13 +118,13 @@ class Baxter_World(TeleopWorld):
         self.table = XFormPrim(
             prim_path=f"/World/Tables/table",
             name="table",
-            position=[0.58,-0.04,-0.77],
+            position=[0.58,-0.04,-0.78],
             orientation=np.array([1, 0, 0, 0]),
             scale=[1, 0.85, 1.25],
         )  # w,x,y,z
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
-            position=np.array([0.58, -0.04, -0.25]),
+            position=np.array([0.58, -0.04, -0.26]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([1, 1, 1]),
             scale=[0.55, 1.0, 0.05],
