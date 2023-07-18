@@ -32,25 +32,25 @@ class Baxter_World(TeleopWorld):
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
-
+        self.tracking_enabled["left"] = False # Left hand is not tracked by default
+        
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
             self.tracking_enabled["right"] = False
         else:
             self.tracking_enabled["right"] = True
 
-
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
         offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles overhead rotation
-        # seminar_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.0, z=-1)  ## Handles robot specific rotation
+        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=0.707)  ## Handles robot specific rotation
 
         q1 = mul_rot * q1
         q1 *= offset_rot
-        # q1 = seminar_rot *q1
+        q1 = seminar_rot *q1
 
         self.right_cube_pose = (
-            (-data.position.x, data.position.z, data.position.y),
+            (-data.position.z, -data.position.x, data.position.y),
             (q1.w, q1.x, q1.y, q1.z),
         )
 
@@ -64,13 +64,15 @@ class Baxter_World(TeleopWorld):
 
         q1 = pyq.Quaternion(x=data.orientation.x, y=data.orientation.y, z=data.orientation.z, w=data.orientation.w)
         mul_rot = pyq.Quaternion(w=0.0, x=0.0, y=0.707, z=0.707)  ## Handles axis correction
-        offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles axis correction
+        offset_rot = pyq.Quaternion(w=0.5, x=0.5, y=-0.5, z=0.5)  ## Handles overhead rotation
+        seminar_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=0.707)  ## Handles robot specific rotation
 
         q1 = mul_rot * q1
         q1 *= offset_rot
+        q1 = seminar_rot *q1
 
         self.left_cube_pose = (
-            (-data.position.x, data.position.z, data.position.y),
+            (-data.position.z, -data.position.x, data.position.y),
             (q1.w, q1.x, q1.y, q1.z),
         )
 
