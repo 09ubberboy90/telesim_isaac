@@ -1,3 +1,4 @@
+import os
 import sys
 from collections import defaultdict
 
@@ -75,10 +76,13 @@ class TeleopWorld(Node):
         self.ros_world._behaviors.clear()
 
     def enable_behavior(self, data: Empty):
-        self.global_tracking = False
-        decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/garment_sm.py").make_decider_network(self._robot)
-        self.ros_world.add_decider_network(decider_network)
-
+        if os.path.exists("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/garment_sm.py"):
+            self.global_tracking = False
+            decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/garment_sm.py").make_decider_network(self._robot)
+            self.ros_world.add_decider_network(decider_network)
+        else:
+            carb.log_error("Garment SM not found")
+            
     def get_cubes(self, data: PoseStamped):
         self.cubes_pose[data.header.frame_id + "_block"] = (
             (data.pose.position.x, data.pose.position.y, data.pose.position.z),

@@ -24,9 +24,10 @@ from std_msgs.msg import Bool
 from sensor_msgs.msg import JointState
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from general_world import TeleopWorld
-from ur3.ur_t42_robot import CortexUR
+# from ur3.ur_t42_robot import CortexUR
+from ur3.ur_robotiq import CortexUR
 
-class Baxter_World(TeleopWorld):
+class UR_World(TeleopWorld):
     def __init__(self):
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
@@ -78,11 +79,11 @@ class Baxter_World(TeleopWorld):
         self.robot.motion_policy.update_world()
         if self.global_tracking:  ## Make sure this is not enable when working with corte
             if (not self.gripper_bool) and self.tracking_enabled["right"]:
-                if self.trigger:
+                if self.trigger and self.robot.gripper.is_open():
                     ## Passing None need to make sure the self.command = None is commented out in the cortex file
                     self.robot.gripper.close(speed= None)
                     # print("Closing gripper")
-                elif not self.robot.gripper.is_open():
+                elif not (self.robot.gripper.is_open() and self.trigger):
                     ## Passing None need to make sure the self.command = None is commented out in the cortex file
                     self.robot.gripper.open(speed= None)
                     # print("Opening gripper")
@@ -94,8 +95,8 @@ class Baxter_World(TeleopWorld):
 
 
     def setup_robot_scene(self):
-
-        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/urdfs/ur5e_robotiq.urdf"
+        # self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
 
         self.robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path))
         add_reference_to_stage(
@@ -133,8 +134,8 @@ class Baxter_World(TeleopWorld):
         # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
-            position=np.array([0.07, 0.3, 0.12]),
-            orientation=np.array([0.0,-0.707,0.0,-0.707]),
+            position=np.array([0.07, 0.3, 1.02]),
+            orientation=np.array([0.5,-.5,-.5,-.5]),
             size=0.005,
             color=np.array([0, 0, 1]),
         )
@@ -170,5 +171,5 @@ class Baxter_World(TeleopWorld):
 
 if __name__ == "__main__":
     rclpy.init()
-    subscriber = Baxter_World()
+    subscriber = UR_World()
     subscriber.run_simulation()

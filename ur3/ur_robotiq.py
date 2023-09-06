@@ -12,7 +12,7 @@ from typing import Optional
 import numpy as np
 import omni
 
-from ur3.grippers import CortexT42Gripper
+from ur3.grippers import CortexRobotiqGripper
 import os
 from typing import Optional, Sequence
 
@@ -51,7 +51,7 @@ class CortexUR(MotionCommandedRobot):
         orientation: Optional[Sequence[float]] = None,
         use_motion_commander=True,
     ):
-        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config", "rmp_config.json")
+        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/config", "rmp_config.json")
 
         motion_policy_config = icl._process_policy_config(rmp_config_dir)
         result, self.ur_prim = import_robot(urdf_path)
@@ -66,7 +66,8 @@ class CortexUR(MotionCommandedRobot):
             ),
         )
 
-        self.right_gripper_commander = CortexT42Gripper(self, ["swivel_1_to_finger_1_1","finger_1_1_to_finger_1_2", "swivel_2_to_finger_2_1","finger_2_1_to_finger_2_2"])
+        self.right_gripper_commander = CortexRobotiqGripper(self, ["right_inner_knuckle_joint", "right_outer_knuckle_joint", "right_inner_finger_joint",
+                                                                   "left_inner_knuckle_joint", "finger_joint", "left_inner_finger_joint" ])
         self.add_commander("gripper", self.right_gripper_commander)
 
     def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None):
@@ -75,8 +76,9 @@ class CortexUR(MotionCommandedRobot):
         verbose = True
         # kps=[67108] * (self.num_dof - 4) + [10000000] * 4,
         # kds=[107374] * (self.num_dof - 4) + [200000] * 4,
-        kps=[34.90659] * (self.num_dof),
-        kds=[349.06586] * (self.num_dof - 4) + [1] * 4 ,
+        kps=[15000] * (self.num_dof - 6) + [11459] * 6,
+        kds=[1500] * (self.num_dof - 6) + [1145] * 6,
+        
         if verbose:
             print("setting UR gains:")
             print("- kps: {}".format(kps))
