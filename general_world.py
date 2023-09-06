@@ -32,6 +32,7 @@ class TeleopWorld(Node):
         super().__init__("isaac_sim_loop")
         self.simulation_app = simulation_app
         self._robot = None
+        self.cortex_table = None
         self.tracking_enabled = defaultdict(lambda: True)
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
         self.decider_activate = self.create_subscription(Empty, "activate_behavior", self.enable_behavior, 10)
@@ -171,8 +172,13 @@ class TeleopWorld(Node):
         self.ros_world.reset()
         self.simulation_app.update()
         self.ros_world.step()  # Step physics to trigger cortex_sim extension self._robot to be created.
-        self._robot.initialize()
-        self._robot.motion_policy.add_obstacle(self.cortex_table)
+        if self._robot is not None:
+            self._robot.initialize()
+        else:
+            self.get_logger().error('robot not defined')
+            self.exit()
+        if self.cortex_table is not None:
+            self._robot.motion_policy.add_obstacle(self.cortex_table)
         # self._robot.motion_policy.visualize_collision_spheres()
 
     def create_action_graph(self):
