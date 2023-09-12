@@ -24,8 +24,8 @@ from std_msgs.msg import Bool
 from sensor_msgs.msg import JointState
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from general_world import TeleopWorld
-# from ur3.ur_t42_robot import CortexUR
-from ur3.ur_robotiq import CortexUR
+from ur3.ur_t42_robot import CortexUR
+# from ur3.ur_robotiq import CortexUR
 
 class UR_World(TeleopWorld):
     def __init__(self):
@@ -95,10 +95,11 @@ class UR_World(TeleopWorld):
 
 
     def setup_robot_scene(self):
-        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/urdfs/ur5e_robotiq.urdf"
-        # self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
+        # self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/urdfs/ur5e_robotiq.urdf"
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
+        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config"
 
-        self.robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path))
+        self.robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path, rmp_path=self.rmp_path))
         add_reference_to_stage(
             usd_path=self.assets_root_path + "/Isaac/Environments/Office/Props/SM_TableC.usd",
             prim_path=f"/World/Tables/table",

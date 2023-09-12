@@ -47,11 +47,18 @@ class CortexUR(MotionCommandedRobot):
         self,
         name: str,
         urdf_path: str,
+        rmp_path: str,
         position: Optional[Sequence[float]] = None,
         orientation: Optional[Sequence[float]] = None,
         use_motion_commander=True,
     ):
-        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/config", "rmp_config.json")
+        if not os.path.isdir(rmp_path):
+            raise FileNotFoundError("RMP path is not a directory")
+        if not os.path.isfile(os.path.join(rmp_path, "rmp_config.json")):
+            raise FileNotFoundError("RMP path does not contain rmp_config.json")
+        if not os.path.isfile(urdf_path):
+            raise FileNotFoundError("URDF path is not a file")
+        rmp_config_dir = os.path.join(rmp_path, "rmp_config.json")
 
         motion_policy_config = icl._process_policy_config(rmp_config_dir)
         result, self.ur_prim = import_robot(urdf_path)
