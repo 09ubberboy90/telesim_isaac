@@ -35,9 +35,6 @@ class TeleopWorld(Node):
         self.cortex_table = None
         self.tracking_enabled = defaultdict(lambda: True)
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
-        self.decider_activate = self.create_subscription(Empty, "activate_behavior", self.enable_behavior, 10)
-        self.decider_clear = self.create_subscription(Empty, "clear_behavior", self.clear_behavior, 10)
-        self.cube_sub = self.create_subscription(PoseStamped, "detected_cubes", self.get_cubes, 1)
         self.timeline = omni.timeline.get_timeline_interface()
         self.right_cube_pose = None
         self.left_cube_pose = None
@@ -71,54 +68,6 @@ class TeleopWorld(Node):
     def enable_tracking(self, data: Bool):
         self.global_tracking = data.data
 
-    def clear_behavior(self, data: Empty):
-        ## TODO: Find out why it doesn't work
-        self.ros_world._logical_state_monitors.clear()
-        self.ros_world._behaviors.clear()
-
-    def enable_behavior(self, data: Empty):
-        if os.path.exists("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/garment_sm.py"):
-            self.global_tracking = False
-            decider_network = load_behavior_module("/home/ubb/Documents/Baxter_isaac/ROS2/src/isaac_sim/garment_sm.py").make_decider_network(self._robot)
-            self.ros_world.add_decider_network(decider_network)
-        else:
-            carb.log_error("Garment SM not found")
-            
-    def get_cubes(self, data: PoseStamped):
-        self.cubes_pose[data.header.frame_id + "_block"] = (
-            (data.pose.position.x, data.pose.position.y, data.pose.position.z),
-            (data.pose.orientation.w, data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z),
-        )
-
-    def create_cubes(self):
-        for name, pose in self.cubes_pose.items():
-            if name not in self.existing_cubes.keys():
-                self.existing_cubes[name] = VisualCuboid(
-                    f"/World/Obs/{name}",
-                    position=pose[0],
-                    orientation=pose[1],
-                    size=np.array([0.04, 0.04, 0.04]),
-                    color=np.array([1, 0, 0]),
-                )
-                # add_reference_to_stage(
-                #     usd_path=self.rubiks_path,
-                #     prim_path=f"/World/Obs/{name}",
-                # )
-                # self.existing_cubes[name] = XFormPrim(
-                #     prim_path=f"/World/Obs/{name}",
-                #     name=f"{name}",
-                #     position=pose[0],
-                #     orientation=pose[1],
-                #     scale=np.array([0.0056, 0.0056, 0.0056]),
-                # )  # w,x,y,z
-
-            else:
-                try:
-                    self.existing_cubes[name].set_world_pose(*pose)
-                except:
-                    carb.log_warn(f"Object with name '{name}' has been ignored")
-
-
     def rclpy_spinner(self, event):
         while not event.is_set():
             rclpy.spin_once(self)
@@ -136,10 +85,6 @@ class TeleopWorld(Node):
             if self.ros_world.is_playing():
                 if self.ros_world.current_time_step_index == 0:
                     self.ros_world.reset()
-
-                # print(f"Main Loop: {time.time()-self.time}")
-                # self.time = time.time()
-                self.create_cubes()
 
                 self.robot_run_simulation()
 

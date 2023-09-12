@@ -112,15 +112,6 @@ class UR_World(TeleopWorld):
             scale=[1.4, 1.3, 1.7]
         )  # w,x,y,z
 
-        # self.table2 = VisualCuboid(
-        #     "/World/Tables/table",
-        #     position=np.array([0.0, 0.25, -0.4]),
-        #     orientation=np.array([1, 0, 0, 0]),
-        #     color=np.array([0, 0.2196, 0.3961]),
-        #     size=0.8,
-        #     scale=[1.8625, 1, 1]
-
-        # )
         self.cortex_table = FixedCuboid(
             "/World/Tables/cortex_table",
             position=np.array([0.0, 0.25, -0.08]),
@@ -132,7 +123,7 @@ class UR_World(TeleopWorld):
 
         )
 
-        # Create a cuboid to visualize where the "panda_hand" frame is according to the kinematics"
+        # Create a cuboid to visualize where the ee frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
             position=np.array([0.07, 0.3, 1.02]),
@@ -140,34 +131,6 @@ class UR_World(TeleopWorld):
             size=0.005,
             color=np.array([0, 0, 1]),
         )
-
-        # self.create_cortex_cubes()
-
-    def create_cortex_cubes(self):
-        name = [
-            "red_block",
-            "green_block",
-            # "blue_block",
-            "yellow_block",
-        ]
-        color = [
-            [1, 0, 0],
-            [0, 1, 0],
-            # [0, 0, 1],
-            [1, 1, 0],
-        ]
-        for i in range(len(name)):
-            self.existing_cubes[name[i]] = VisualCuboid(
-            f"/World/Obs/{name[i]}",
-            name = name[i],
-            position=np.array([0.3+((i+1)%len(name))/10, 0.0, -0.18]),
-            orientation=np.array([1, 0, 0, 0]),
-            size=0.04,
-            color=np.array(color[i]),
-            )
-            obj = self.ros_world.scene.add(self.existing_cubes[name[i]])
-            ## TODO: Configure for when used in trackign or in cortex
-            # self.robot.register_obstacle(obj)
 
 
 if __name__ == "__main__":
