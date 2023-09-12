@@ -110,8 +110,8 @@ class Baxter_World(TeleopWorld):
     def setup_robot_scene(self):
 
         self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
-
-        self.robot = self.ros_world.add_robot(CortexBaxter(name="baxter", urdf_path=self.urdf_path))
+        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
+        self.robot = self.ros_world.add_robot(CortexBaxter(name="baxter", urdf_path=self.urdf_path, rmp_path=self.rmp_path))
         
         add_reference_to_stage(
             usd_path=self.assets_root_path + "/Isaac/Environments/Office/Props/SM_TableC.usd",

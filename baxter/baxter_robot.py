@@ -41,169 +41,26 @@ def import_baxter_robot(urdf_path):
         "URDFParseAndImportFile", urdf_path=urdf_path, import_config=import_config
     )
 
-
-class Baxter(Robot):
-    """[summary]
-
-    Args:
-        prim_path (str): [description]
-        name (str, optional): [description]. Defaults to "ur10_robot".
-        usd_path (Optional[str], optional): [description]. Defaults to None.
-        position (Optional[np.ndarray], optional): [description]. Defaults to None.
-        orientation (Optional[np.ndarray], optional): [description]. Defaults to None.
-        end_effector_prim_name (Optional[str], optional): [description]. Defaults to None.
-        attach_gripper (bool, optional): [description]. Defaults to False.
-        gripper_usd (Optional[str], optional): [description]. Defaults to "default".
-
-    Raises:
-        NotImplementedError: [description]
-    """
-
-    def __init__(
-        self,
-        # prim_path: str,
-        urdf_path: str,
-        name: str = "baxter",
-        position: Optional[np.ndarray] = None,
-        orientation: Optional[np.ndarray] = None,
-        attach_gripper: bool = True,
-    ) -> None:
-        # prim = get_prim_at_path(prim_path)
-        self._end_effector = None
-        # if not prim.IsValid():
-        self._attach_gripper = attach_gripper
-        result, self.baxter_prim = import_baxter_robot(urdf_path)
-        super().__init__(
-            prim_path=self.baxter_prim,
-            name=name,
-            position=position,
-            orientation=orientation,
-            articulation_controller=None,
-        )
-        # home_config = [0.0, -0.55, 0.0, 0.75, 0.0, 1.26, 0.0, 0.0, -0.55, 0.0, 0.75, 0.0, 1.26, 0.0]
-        # self.set_joints_default_state(positions=home_config)
-        if attach_gripper:
-            self._left_end_effector_prim_path = self.baxter_prim + "/" + "left_gripper"
-            self._right_end_effector_prim_path = self.baxter_prim + "/" + "right_gripper"
-            self._left_gripper = ParallelGripper(
-                self._left_end_effector_prim_path,
-                joint_prim_names=["l_gripper_l_finger_joint", "l_gripper_r_finger_joint"],
-                joint_closed_positions=[0.0, 0.0],
-                joint_opened_positions=[0.020833, -0.020833],
-            )
-
-            self._right_gripper = ParallelGripper(
-                self._right_end_effector_prim_path,
-                joint_prim_names=["r_gripper_l_finger_joint", "r_gripper_r_finger_joint"],
-                joint_closed_positions=[0.0, 0.0],
-                joint_opened_positions=[0.020833, -0.020833],
-            )
-
-    def initialize_gripper(self, gripper: ParallelGripper, physics_sim_view=None):
-        gripper.initialize(
-            physics_sim_view=physics_sim_view,
-            articulation_apply_action_func=self.apply_action,
-            get_joint_positions_func=self.get_joint_positions,
-            set_joint_positions_func=self.set_joint_positions,
-            dof_names=self.dof_names,
-        )
-
-    def initialize_grippers(self, physics_sim_view=None):
-
-        self._right_end_effector = RigidPrim(
-            prim_path=self._right_end_effector_prim_path, name=self.name + "_right_end_effector"
-        )
-        self._right_end_effector.initialize(physics_sim_view)
-        self._left_end_effector = RigidPrim(
-            prim_path=self._left_end_effector_prim_path, name=self.name + "_left_end_effector"
-        )
-        self._left_end_effector.initialize(physics_sim_view)
-
-        self.initialize_gripper(self.left_gripper, physics_sim_view=physics_sim_view)
-        self.initialize_gripper(self.right_gripper, physics_sim_view=physics_sim_view)
-
-    @property
-    def attach_gripper(self) -> bool:
-        """[summary]
-
-        Returns:
-            bool: [description]
-        """
-        return self._attach_gripper
-
-    @property
-    def end_effector(self) -> RigidPrim:
-        """[summary]
-
-        Returns:
-            RigidPrim: [description]
-        """
-        return self._end_effector
-
-    @property
-    def gripper(self) -> ParallelGripper:
-        """[summary]
-
-        Returns:
-            ParallelGripper: [description]
-        """
-        return self._right_gripper
-
-    @property
-    def right_gripper(self) -> ParallelGripper:
-        """[summary]
-
-        Returns:
-            ParallelGripper: [description]
-        """
-        return self._right_gripper
-
-    @property
-    def left_gripper(self) -> ParallelGripper:
-        """[summary]
-
-        Returns:
-            ParallelGripper: [description]
-        """
-        return self._left_gripper
-
-    def initialize(self, physics_sim_view=None) -> None:
-        """[summary]"""
-        super().initialize(physics_sim_view)
-        if self._attach_gripper:
-            self.initialize_grippers(physics_sim_view)
-        self.disable_gravity()
-        return
-
-    def post_reset(self) -> None:
-        """[summary]"""
-        super().post_reset()
-        self.right_gripper.post_reset()
-        self.left_gripper.post_reset()
-        self._articulation_controller.switch_dof_control_mode(
-            dof_index=self.right_gripper.joint_dof_indicies[0], mode="position"
-        )
-        self._articulation_controller.switch_dof_control_mode(
-            dof_index=self.right_gripper.joint_dof_indicies[1], mode="position"
-        )
-        self._articulation_controller.switch_dof_control_mode(
-            dof_index=self.left_gripper.joint_dof_indicies[0], mode="position"
-        )
-        self._articulation_controller.switch_dof_control_mode(
-            dof_index=self.left_gripper.joint_dof_indicies[1], mode="position"
-        )
-
-
 class CortexBaxter(MotionCommandedRobot):
     def __init__(
         self,
         name: str,
         urdf_path: str,
+        rmp_path: str,
         position: Optional[Sequence[float]] = None,
         orientation: Optional[Sequence[float]] = None,
         use_motion_commander=True,
     ):
-        rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow", "right_config.json")
+        if not os.path.isdir(rmp_path):
+            raise FileNotFoundError("RMP path is not a directory")
+        if not os.path.isfile(os.path.join(rmp_path, "right_config.json")):
+            raise FileNotFoundError("RMP path does not contain right_config.json")
+        if not os.path.isfile(os.path.join(rmp_path, "left_config.json")):
+            raise FileNotFoundError("RMP path does not contain left_config.json")
+        if not os.path.isfile(urdf_path):
+            raise FileNotFoundError("URDF path is not a file")
+        
+        rmp_config_dir = os.path.join(rmp_path, "right_config.json")
 
         motion_policy_config = icl._process_policy_config(rmp_config_dir)
         result, self.baxter_prim = import_baxter_robot(urdf_path)
@@ -217,7 +74,7 @@ class CortexBaxter(MotionCommandedRobot):
                 active_commander=use_motion_commander, smoothed_rmpflow=True, smoothed_commands=True
             ),
         )
-        left_rmp_config_dir = os.path.join("/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow", "left_config.json")
+        left_rmp_config_dir = os.path.join(rmp_path, "left_config.json")
 
         left_motion_policy_config = icl._process_policy_config(left_rmp_config_dir)
 
