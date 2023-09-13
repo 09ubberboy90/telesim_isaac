@@ -27,14 +27,15 @@ from general_world import TeleopWorld
 
 class Baxter_World(TeleopWorld):
     def __init__(self):
+        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
+        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
+
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.tracking_enabled["left"] = False # Left hand is not tracked by default
-        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
-        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
 
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:

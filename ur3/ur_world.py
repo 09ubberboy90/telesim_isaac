@@ -28,14 +28,15 @@ from ur3.ur_t42_robot import CortexUR
 
 class UR_World(TeleopWorld):
     def __init__(self):
+        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/ur_isaac/urdfs/ur_t42.urdf"
+        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/ur_isaac/config"
+
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
         self.gripper_bool = False
         self.controller_sub = self.create_subscription(Bool, "controller_switch", self.controller_switch, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.gripper_sub = self.create_subscription(JointState, "senseglove_motor", self.gripper_callback, 10)
-        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/ur_isaac/urdfs/ur_t42.urdf"
-        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/ur_isaac/config"
 
     def controller_switch(self, data: Bool):
         self.gripper_bool = data.data
