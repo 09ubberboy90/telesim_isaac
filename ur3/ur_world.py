@@ -34,6 +34,8 @@ class UR_World(TeleopWorld):
         self.controller_sub = self.create_subscription(Bool, "controller_switch", self.controller_switch, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.gripper_sub = self.create_subscription(JointState, "senseglove_motor", self.gripper_callback, 10)
+        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/ur_isaac/urdfs/ur_t42.urdf"
+        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/ur_isaac/config"
 
     def controller_switch(self, data: Bool):
         self.gripper_bool = data.data
@@ -94,8 +96,6 @@ class UR_World(TeleopWorld):
 
 
     def setup_robot_scene(self):
-        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/urdfs/ur_t42.urdf"
-        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_t42/ur_isaac/config"
 
         self.robot = self.ros_world.add_robot(CortexUR(name="ur", urdf_path=self.urdf_path, rmp_path=self.rmp_path))
         add_reference_to_stage(

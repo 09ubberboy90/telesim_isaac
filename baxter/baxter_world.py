@@ -33,7 +33,9 @@ class Baxter_World(TeleopWorld):
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
         self.tracking_enabled["left"] = False # Left hand is not tracked by default
-        
+        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
+        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
+
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
             self.tracking_enabled["right"] = False
@@ -109,8 +111,6 @@ class Baxter_World(TeleopWorld):
 
     def setup_robot_scene(self):
 
-        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
-        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
         self.robot = self.ros_world.add_robot(CortexBaxter(name="baxter", urdf_path=self.urdf_path, rmp_path=self.rmp_path))
         
         add_reference_to_stage(
