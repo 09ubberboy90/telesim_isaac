@@ -1,6 +1,6 @@
 # Telesim for Isaac Sim
 
-Package for Telesim, a modular and plug and play teleoperation system, that can be used with any kind of robotic arms.
+Package for TeleSim, a modular and plug and play teleoperation system, that can be used with any kind of robotic arms.
 
 TODO: Insert Picture
 
@@ -8,20 +8,19 @@ TODO: Insert Picture
 
 ### Instalation
 
-Make sure you have cloned the revelant repositories from the [master repo](https://github.com/09ubberboy90/telesim_pnp) or only the relevant part for [Baxter](https://github.com/09ubberboy90/telesim_pnp_baxter.git) or [UR3](https://github.com/09ubberboy90/telesim_pnp_ur.git).
+Make sure you have cloned the relevant repositories from the [master repo](https://github.com/09ubberboy90/telesim_pnp) or only the relevant part for [Baxter](https://github.com/09ubberboy90/telesim_pnp_baxter.git) or [UR3](https://github.com/09ubberboy90/telesim_pnp_ur.git).
 
 Beware if you do not download the master repo, you will only be able to use the relevant robots from this repo.
 
-Build the workspace which will be refered henceforth as `ros_ws` using `colcon build`
+Build the workspace which will be referred henceforth as `ros_ws` using `colcon build`
 
 Additionally install [Isaac Sim 2022.2.0](https://docs.omniverse.nvidia.com/isaacsim/latest/install_workstation.html), newer version may work but have not been tested.
-
 
 ### Usage
 
 BEWARE: Do not source ROS or have ROS sourced for the following !
 
-Find your isaac sim python path; It should be in `~/.local/share/ov/pkg/isaac_sim-2022.2.0/python.sh`. It will be reffered henceforth as `isp`
+Find your isaac sim python path; It should be in `~/.local/share/ov/pkg/isaac_sim-2022.2.0/python.sh`. It will be referred henceforth as `isp`
 
 Then you need to export the path of the packages you are going to use so that Isaac Sim can load them.
 
@@ -35,8 +34,7 @@ Make sure you also have installed pyquaternion for Isaac Sim. This can be done b
 
 `isp -m pip install pyquaternion`
 
-Make sure you have updated the urdf and rmp path accordign to your need in either [ur_world.py](ur3/ur_world.py) or [baxter_world.py](baxter/baxter_world.py) file. They are defined in the init as self.urdf and self.rmp respectively
-
+Make sure you have updated the urdf and rmp path according to your need in either [ur_world.py](ur3/ur_world.py) or [baxter_world.py](baxter/baxter_world.py) file. They are defined in the init as `self.urdf` and `self.rmp` respectively
 
 #### Baxter
 
@@ -66,9 +64,9 @@ Create a copy of one of the {robot}_world.py and of the {robot}_robot.py file.
 
 Makes changes in the {robot}_robot.py, such as the gripper joint name (for more than 2 gripper joint use grippers.py as base) in the Cortex class. Make sure to update the files about the robot configuration.
 
-## Using different controller.
+## Using different controller
 
-To add a new type of controller, Make sure to update if need the listening path in your {robot}_world.py. 
+To add a new type of controller, Make sure to update if need the listening path in your {robot}_world.py.
 
 Additionally in the function `move_right_cube_callback` make sure to update the quaternion multiplication so that it will match the resting pose of the controller.
 
