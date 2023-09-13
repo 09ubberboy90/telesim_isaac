@@ -2,7 +2,7 @@
 
 Package for TeleSim, a modular and plug and play teleoperation system, that can be used with any kind of robotic arms.
 
-TODO: Insert Picture
+![picture](docs/images/teleop_system_robots.png)
 
 ## Using This Package
 
