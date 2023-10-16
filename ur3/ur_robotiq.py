@@ -62,6 +62,7 @@ class CortexUR(MotionCommandedRobot):
 
         motion_policy_config = icl._process_policy_config(rmp_config_dir)
         result, self.ur_prim = import_robot(urdf_path)
+
         super().__init__(
             name=name,
             prim_path=self.ur_prim,

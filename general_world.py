@@ -32,6 +32,7 @@ class TeleopWorld(Node):
         super().__init__("isaac_sim_loop")
         self.simulation_app = simulation_app
         self._robot = None
+        self._robot_2 = None # TODO: This is a temporary hack 
         self.cortex_table = None
         self.tracking_enabled = defaultdict(lambda: True)
         self.movement_sub = self.create_subscription(Bool, "activate_tracking", self.enable_tracking, 10)
@@ -48,6 +49,7 @@ class TeleopWorld(Node):
         self.ros_time = time.time()
         self.setup_scene()
         self.create_action_graph()
+        self.stage = omni.usd.get_context().get_stage()
 
     @property
     def robot(self):
@@ -120,7 +122,7 @@ class TeleopWorld(Node):
         if self._robot is not None:
             self._robot.initialize()
         else:
-            self.get_logger().error('robot not defined')
+            carb.log_error("Robot not defined")
             self.exit()
         if self.cortex_table is not None:
             self._robot.motion_policy.add_obstacle(self.cortex_table)
@@ -135,19 +137,23 @@ class TeleopWorld(Node):
                         ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
                         ("ReadSystemTime", "omni.isaac.core_nodes.IsaacReadSystemTime"),
                         ("PublishJointState", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
+                        ("PublishJointState_2", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
                         ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                         # ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
                     ],
                     og.Controller.Keys.CONNECT: [
                         ("OnPlaybackTick.outputs:tick", "PublishJointState.inputs:execIn"),
+                        ("OnPlaybackTick.outputs:tick", "PublishJointState_2.inputs:execIn"),
                         ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
                         # ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
                         ("ReadSystemTime.outputs:systemTime", "PublishJointState.inputs:timeStamp"),
+                        ("ReadSystemTime.outputs:systemTime", "PublishJointState_2.inputs:timeStamp"),
                         # ("ReadSimTime.outputs:systemTime", "PublishClock.inputs:timeStamp"),
                         ("ReadSystemTime.outputs:systemTime", "PublishTF.inputs:timeStamp"),
                     ],
                     og.Controller.Keys.SET_VALUES: [
                         ("PublishJointState.inputs:topicName", "joint_states_sim"),
+                        ("PublishJointState_2.inputs:topicName", "joint_states_sim_right"),
                         ("PublishTF.inputs:topicName", "tf_sim"),
                     ],
                 },
@@ -157,6 +163,8 @@ class TeleopWorld(Node):
 
         # Setting the /Franka target prim to Publish JointState node
         set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self._robot.prim_path])
+        if self._robot_2 is not None:
+            set_target_prims(primPath="/ActionGraph/PublishJointState_2", targetPrimPaths=[self._robot_2.prim_path])
 
         # Setting the /Franka target prim to Publish Transform Tree node
         set_target_prims(
