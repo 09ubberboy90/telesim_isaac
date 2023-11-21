@@ -126,7 +126,11 @@ class TeleopWorld(Node):
             self.exit()
         if self.cortex_table is not None:
             self._robot.motion_policy.add_obstacle(self.cortex_table)
+            if self._robot_2 is not None:
+                self._robot_2.motion_policy.add_obstacle(self.cortex_table)
+
         # self._robot.motion_policy.visualize_collision_spheres()
+        # self._robot_2.motion_policy.visualize_collision_spheres()
 
     def create_action_graph(self):
         try:
