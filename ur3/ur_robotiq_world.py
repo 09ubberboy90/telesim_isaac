@@ -7,58 +7,27 @@ from omni.isaac.core.objects.cuboid import DynamicCuboid, FixedCuboid, VisualCub
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.utils.extensions import disable_extension, enable_extension
 from omni.isaac.cortex.motion_commander import PosePq
-import pxr
 
 disable_extension("omni.isaac.ros_bridge")
 enable_extension("omni.isaac.ros2_bridge")
-# enable_extension("semu.xr.openxr")
 
 simulation_app.update()
 
-from omni.isaac.debug_draw import _debug_draw
-import omni
-
 import numpy as np
-import numpy.matlib as npm
 import pyquaternion as pyq
-from scipy.spatial.transform import Rotation
 
 # Note that this is not the system level rclpy, but one compiled for omniverse
 import rclpy
-from geometry_msgs.msg import Pose, PoseArray
+from geometry_msgs.msg import Pose
 from std_msgs.msg import Bool
-from sensor_msgs.msg import JointState, PointCloud2, PointField
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from general_world import TeleopWorld
 from ur3.ur_robotiq import CortexUR
-from omni.isaac.core_nodes.scripts.utils import set_target_prims
-
-def quat_mean(Q):
-    ## Taken from https://github.com/christophhagen/averaging-quaternions/blob/master/averageQuaternions.py
-    # Number of quaternions to average
-    M = Q.shape[0]
-    A = npm.zeros(shape=(4, 4))
-
-    for i in range(0, M):
-        q = Q[i, :]
-        # multiply q with its transposed version q' and add A
-        A = np.outer(q, q) + A
-
-    # scale
-    A = (1.0 / M) * A
-    # compute eigenvalues and -vectors
-    eigenValues, eigenVectors = np.linalg.eig(A)
-    # Sort by largest eigenvalue
-    eigenVectors = eigenVectors[:, eigenValues.argsort()[::-1]]
-    # return the real part of the largest eigenvector (has only real part)
-    return np.real(eigenVectors[:, 0].A1)
-
 
 class UR_World(TeleopWorld):
     def __init__(self):
         self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/urdfs/ur5e_robotiq.urdf"
         self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/config"
-        self.obj_pose = None
 
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(
@@ -73,13 +42,9 @@ class UR_World(TeleopWorld):
         self.ros_sub2 = self.create_subscription(
             Pose, "bp/left_hand/pose", self.move_left_cube_unreal_callback, 10
         )
-        self.ros_sub3 = self.create_subscription(Pose, "offset", self.offset_set, 10)
         self.gripper_bool = False
         self.controller_sub = self.create_subscription(
             Bool, "controller_switch", self.controller_switch, 10
-        )
-        self.obj_sub = self.create_subscription(
-            PoseArray, "/object_pose", self.move_obj_callback, 10
         )
         self.trigger_sub = self.create_subscription(
             Bool, "right_hand/trigger", self.right_trigger_callback, 10
@@ -87,17 +52,6 @@ class UR_World(TeleopWorld):
         self.trigger_sub2 = self.create_subscription(
             Bool, "left_hand/trigger", self.left_trigger_callback, 10
         )
-        self.gripper_sub = self.create_subscription(
-            JointState, "senseglove_motor", self.gripper_callback, 10
-        )
-        self.timer_bool = True
-        self.cloud = None
-        self.overhead_rot = [0.5, -0.5, -0.5, -0.5]
-        self.offset = [-0.08, 0.08, 0.95]
-        self.offset_rot = [0.707, 0.0, 0.707, 0]
-        self.obj_pos_ls = np.zeros((3, 3))
-        self.obj_rot_ls = np.zeros((3, 4))
-        self.obj_rot_ls[:, 0] = 1  ## Make sure the quaternion is valid
         self.trigger = defaultdict(bool)
         self.once = True
 
@@ -105,60 +59,6 @@ class UR_World(TeleopWorld):
         self.gripper_bool = data.data
         self.robot.gripper.direct_control = data.data
         self.right_robot.gripper.direct_control = data.data
-
-    def timer_cb(self):
-        self.timer_bool = True
-
-    def set_limits(self, value):
-        return min(max(value, 0.0), 115) * np.pi / 180.0
-
-    def gripper_callback(self, data: JointState):
-        self.robot.gripper.set_gripper(
-            [
-                self.set_limits(data.position[0]),
-                0.0,
-                self.set_limits(data.position[1]),
-                0.0,
-            ]
-        )
-        self.right_robot.gripper.set_gripper(
-            [
-                self.set_limits(data.position[0]),
-                0.0,
-                self.set_limits(data.position[1]),
-                0.0,
-            ]
-        )
-
-    def move_obj_callback(self, data: PoseArray):
-        data = data.poses[0]
-        q1 = pyq.Quaternion(
-            x=data.orientation.x,
-            y=data.orientation.y,
-            z=data.orientation.z,
-            w=data.orientation.w,
-        )
-        x_rot = pyq.Quaternion(w=0.707, x=-0.707, y=0.0, z=0.0)  ## Handles X rotation
-        y_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.707, z=0.0)  ## Handles X rotation
-        z_rot = pyq.Quaternion(w=0.707, x=0.0, y=0.0, z=-0.707)  ## Handles X rotation
-        # q1 = y_rot *q1
-        # q1 = x_rot * q1
-        # q1 = z_rot * q1
-        self.obj_pos_ls = np.roll(self.obj_pos_ls, -1, axis=0)
-        self.obj_pos_ls[-1] = (data.position.x, -data.position.z, -data.position.y)
-        pos_mean = np.mean(self.obj_pos_ls, axis=0)
-
-        self.obj_rot_ls = np.roll(self.obj_rot_ls, -1, axis=0)
-        self.obj_rot_ls[-1] = (q1.w, q1.x, q1.y, q1.z)
-        rot_mean = quat_mean(self.obj_rot_ls)
-        self.obj_pose = (
-            (
-                pos_mean[0] + self.offset[0],
-                pos_mean[1] + self.offset[1],
-                pos_mean[2] + self.offset[2],
-            ),
-            (q1.w, q1.x, q1.y, q1.z),
-        )
 
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
@@ -232,15 +132,6 @@ class UR_World(TeleopWorld):
             (q1.w, q1.x, q1.y, q1.z),
         )
 
-    def offset_set(self, data: Pose):
-        self.offset = [data.position.x, data.position.z, data.position.y]
-        self.offset_rot = [
-            data.orientation.w,
-            data.orientation.x,
-            data.orientation.y,
-            data.orientation.z,
-        ]
-
     def move_left_cube_callback(self, data: Pose):
         if data.position.x > 3000:
             self.tracking_enabled["left"] = False
@@ -302,12 +193,7 @@ class UR_World(TeleopWorld):
         self.robot.motion_policy.set_robot_base_pose(*self.robot_pos)
         self.right_robot.motion_policy.set_robot_base_pose(*self.right_robot_pos)
 
-        if self.obj_pose is not None:
-            self.obj.set_world_pose(*self.obj_pose)
-
-        if (
-            self.global_tracking
-        ):  ## Make sure this is not enable when working with corte
+        if self.global_tracking:  ## Make sure this is not enable when working with corte
             if (not self.gripper_bool) and self.tracking_enabled["left"]:
                 if self.trigger["left"] and self.robot.gripper.is_open():
                     ## Passing None need to make sure the self.command = None is commented out in the cortex file
@@ -396,11 +282,6 @@ class UR_World(TeleopWorld):
             + "/../../../../Projects/YCBV/Wood/textured_obj.usd",
             prim_path=f"/World/obj",
         )
-
-        self.obj = XFormPrim(
-            prim_path=f"/World/obj",
-            name="cracker",
-        )  # w,x,y,z
 
         self.table = XFormPrim(
             prim_path=f"/World/Tables/table",
