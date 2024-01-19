@@ -34,7 +34,7 @@ Make sure you also have installed pyquaternion for Isaac Sim. This can be done b
 
 `isp -m pip install pyquaternion`
 
-Make sure you have updated the urdf and rmp path according to your need in either [ur_world.py](ur3/ur_world.py) or [baxter_world.py](baxter/baxter_world.py) file. They are defined in the init as `self.urdf` and `self.rmp` respectively
+Make sure you have updated the urdf and rmp path according to your need in either [ur_t42_world.py](ur3/ur_t42_world.py) or [baxter_world.py](baxter/baxter_world.py) file. They are defined in the init as `self.urdf` and `self.rmp` respectively
 
 #### Baxter
 
@@ -54,7 +54,7 @@ To add the packages needed for UR3 with the T42 gripper:
 
 To run for the UR3
 
-`isp ur/ur_world.py`
+`isp ur/ur_t42_world.py`
 
 ## Adding new Robots
 

@@ -143,22 +143,26 @@ class TeleopWorld(Node):
                         ("PublishJointState", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
                         ("PublishJointState_2", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
                         ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
+                        ("PublishTF_2", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                         # ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
                     ],
                     og.Controller.Keys.CONNECT: [
                         ("OnPlaybackTick.outputs:tick", "PublishJointState.inputs:execIn"),
                         ("OnPlaybackTick.outputs:tick", "PublishJointState_2.inputs:execIn"),
                         ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
+                        ("OnPlaybackTick.outputs:tick", "PublishTF_2.inputs:execIn"),
                         # ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
                         ("ReadSystemTime.outputs:systemTime", "PublishJointState.inputs:timeStamp"),
                         ("ReadSystemTime.outputs:systemTime", "PublishJointState_2.inputs:timeStamp"),
                         # ("ReadSimTime.outputs:systemTime", "PublishClock.inputs:timeStamp"),
                         ("ReadSystemTime.outputs:systemTime", "PublishTF.inputs:timeStamp"),
+                        ("ReadSystemTime.outputs:systemTime", "PublishTF_2.inputs:timeStamp"),
                     ],
                     og.Controller.Keys.SET_VALUES: [
                         ("PublishJointState.inputs:topicName", "joint_states_sim"),
                         ("PublishJointState_2.inputs:topicName", "joint_states_sim_right"),
                         ("PublishTF.inputs:topicName", "tf_sim"),
+                        ("PublishTF_2.inputs:topicName", "tf_sim_right"),
                     ],
                 },
             )
@@ -167,15 +171,21 @@ class TeleopWorld(Node):
 
         # Setting the /Franka target prim to Publish JointState node
         set_target_prims(primPath="/ActionGraph/PublishJointState", targetPrimPaths=[self._robot.prim_path])
-        if self._robot_2 is not None:
-            set_target_prims(primPath="/ActionGraph/PublishJointState_2", targetPrimPaths=[self._robot_2.prim_path])
-
         # Setting the /Franka target prim to Publish Transform Tree node
         set_target_prims(
             primPath="/ActionGraph/PublishTF",
             inputName="inputs:targetPrims",
             targetPrimPaths=[self._robot.prim_path],
         )
+
+
+        if self._robot_2 is not None:
+            set_target_prims(primPath="/ActionGraph/PublishJointState_2", targetPrimPaths=[self._robot_2.prim_path])
+            set_target_prims(
+                primPath="/ActionGraph/PublishTF_2",
+                inputName="inputs:targetPrims",
+                targetPrimPaths=[self._robot_2.prim_path],
+            )
 
         self.simulation_app.update()
 

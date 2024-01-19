@@ -300,7 +300,7 @@ class UR_World(TeleopWorld):
 
         self.cortex_small_table = FixedCuboid(
             "/World/Tables/cortex_small_table",
-            position=np.array([-0.42, 0.09, -0.126]),
+            position=np.array([-0.42, 0.09, -0.13]),
             orientation=np.array([1, 0, 0, 0]),
             color=np.array([0, 0.2196, 0.3961]),
             size=0.8,
