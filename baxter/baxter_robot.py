@@ -84,7 +84,7 @@ class CortexBaxter(MotionCommandedRobot):
         )
         target_prim = VisualCuboid("/World/left_motion_commander_target", size=0.01, color=np.array([0.15, 0.15, 0.15]))
         self.left_arm_commander = MotionCommander(
-            self, articulation_motion_policy, target_prim, use_smoothed_commands=True
+            articulation_motion_policy, target_prim
         )
 
         self.add_commander("left_arm", self.left_arm_commander)

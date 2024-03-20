@@ -10,7 +10,9 @@ from omni.isaac.core.utils.extensions import (disable_extension,
 from omni.isaac.cortex.motion_commander import PosePq
 
 disable_extension("omni.isaac.ros_bridge")
-enable_extension("omni.isaac.ros2_bridge")
+disable_extension("omni.isaac.ros2_bridge")
+simulation_app.update()
+enable_extension("omni.isaac.ros2_bridge-humble")
 
 simulation_app.update()
 
@@ -27,15 +29,22 @@ from general_world import TeleopWorld
 
 class Baxter_World(TeleopWorld):
     def __init__(self):
-        self.urdf_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
-        self.rmp_path = "/home/ubb/Documents/telesim_pnp/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
+        self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/urdf/baxter.urdf"
+        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/baxter_stack/baxter_joint_controller/rmpflow"
 
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(Pose, "right_hand/pose", self.move_right_cube_callback, 10)
         self.trigger_sub = self.create_subscription(Bool, "right_hand/trigger", self.right_trigger_callback, 10)
         self.ros_sub_2 = self.create_subscription(Pose, "left_hand/pose", self.move_left_cube_callback, 10)
         self.trigger_sub_2 = self.create_subscription(Bool, "left_hand/trigger", self.left_trigger_callback, 10)
-        self.tracking_enabled["left"] = False # Left hand is not tracked by default
+        self.ue_ros_sub = self.create_subscription(
+            Pose, "bp/baxter/right_hand/pose", self.move_right_cube_unreal_callback, 10
+        )
+        self.ue_ros_sub2 = self.create_subscription(
+            Pose, "bp/baxter/left_hand/pose", self.move_left_cube_unreal_callback, 10
+        )
+
+        # self.tracking_enabled["left"] = False # Left hand is not tracked by default
 
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
@@ -78,6 +87,49 @@ class Baxter_World(TeleopWorld):
             (-data.position.z, -data.position.x, data.position.y),
             (q1.w, q1.x, q1.y, q1.z),
         )
+
+    def move_right_cube_unreal_callback(self, data: Pose):
+        q1 = pyq.Quaternion(
+            x=data.orientation.x,
+            y=data.orientation.y,
+            z=data.orientation.z,
+            w=data.orientation.w,
+        )
+        offset_rot = pyq.Quaternion(
+            w=0.707, x=0.0, y=0.0, z=-0.707
+        )  ## Handles Changing axis
+        x_offset = pyq.Quaternion(
+            w=0, x=1.0, y=0.0, z=0
+        )  ## 180 rotation on x
+        q1 = offset_rot * q1
+        q1 *= x_offset
+
+        self.right_cube_pose = (
+            (-data.position.x, -data.position.y, data.position.z),
+            (q1.w, q1.x, q1.y, q1.z),
+        )
+
+    def move_left_cube_unreal_callback(self, data: Pose):
+        q1 = pyq.Quaternion(
+            x=data.orientation.x,
+            y=data.orientation.y,
+            z=data.orientation.z,
+            w=data.orientation.w,
+        )
+        offset_rot = pyq.Quaternion(
+            w=0.707, x=0.0, y=0.0, z=-0.707
+        )  ## Handles Changing axis
+        x_offset = pyq.Quaternion(
+            w=0, x=1.0, y=0.0, z=0
+        )  ## 180 rotation on x
+        q1 = offset_rot * q1
+        q1 *= x_offset
+        
+        self.left_cube_pose = (
+            (-data.position.x, -data.position.y, data.position.z),
+            (q1.w, q1.x, q1.y, q1.z),
+        )
+
 
     def right_trigger_callback(self, data: Bool):
         self.trigger["right"] = data.data
@@ -139,7 +191,7 @@ class Baxter_World(TeleopWorld):
         # Create a cuboid to visualize where the ee frame is according to the kinematics"
         self.right_cube = VisualCuboid(
             "/World/Control/right_cube",
-            position=np.array([0.8, -0.1, 0.1]),
+            position=np.array([-0.1, -0.5, 0.1]),
             orientation=np.array([0, -1, 0, 0]),
             size=0.005,
             color=np.array([0, 0, 1]),

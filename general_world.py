@@ -139,6 +139,7 @@ class TeleopWorld(Node):
                 {
                     og.Controller.Keys.CREATE_NODES: [
                         ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                        ("Delay", "omni.graph.action.Delay"),
                         ("ReadSystemTime", "omni.isaac.core_nodes.IsaacReadSystemTime"),
                         ("PublishJointState", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
                         ("PublishJointState_2", "omni.isaac.ros2_bridge.ROS2PublishJointState"),
@@ -147,10 +148,11 @@ class TeleopWorld(Node):
                         # ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
                     ],
                     og.Controller.Keys.CONNECT: [
-                        ("OnPlaybackTick.outputs:tick", "PublishJointState.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "PublishJointState_2.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "PublishTF_2.inputs:execIn"),
+                        ("OnPlaybackTick.outputs:tick", "Delay.inputs:execIn"),
+                        ("Delay.outputs:finished", "PublishJointState.inputs:execIn"),
+                        ("Delay.outputs:finished", "PublishJointState_2.inputs:execIn"),
+                        ("Delay.outputs:finished", "PublishTF.inputs:execIn"),
+                        ("Delay.outputs:finished", "PublishTF_2.inputs:execIn"),
                         # ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
                         ("ReadSystemTime.outputs:systemTime", "PublishJointState.inputs:timeStamp"),
                         ("ReadSystemTime.outputs:systemTime", "PublishJointState_2.inputs:timeStamp"),
@@ -163,6 +165,7 @@ class TeleopWorld(Node):
                         ("PublishJointState_2.inputs:topicName", "joint_states_sim_right"),
                         ("PublishTF.inputs:topicName", "tf_sim"),
                         ("PublishTF_2.inputs:topicName", "tf_sim_right"),
+                        ("Delay.inputs:duration", 0.1),
                     ],
                 },
             )
