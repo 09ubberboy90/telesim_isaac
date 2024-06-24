@@ -47,20 +47,20 @@ class CortexUR(MotionCommandedRobot):
         self,
         name: str,
         urdf_path: str,
-        rmp_path: str,
+        rmp_file: str,
         position: Optional[Sequence[float]] = None,
         orientation: Optional[Sequence[float]] = None,
         use_motion_commander=True,
     ):
-        if not os.path.isdir(rmp_path):
+        rmp_config_dir = os.path.dirname(rmp_file)
+        if not os.path.isdir(rmp_config_dir):
             raise FileNotFoundError("RMP path is not a directory")
-        if not os.path.isfile(os.path.join(rmp_path, "rmp_config.json")):
-            raise FileNotFoundError("RMP path does not contain rmp_config.json")
+        if not os.path.isfile(rmp_file):
+            raise FileNotFoundError("RMP path does not contain {rmp_file}")
         if not os.path.isfile(urdf_path):
             raise FileNotFoundError("URDF path is not a file")
-        rmp_config_dir = os.path.join(rmp_path, "rmp_config.json")
 
-        motion_policy_config = icl._process_policy_config(rmp_config_dir)
+        motion_policy_config = icl._process_policy_config(rmp_file)
         result, self.ur_prim = import_robot(urdf_path)
 
         super().__init__(
@@ -80,13 +80,15 @@ class CortexUR(MotionCommandedRobot):
 
     def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None):
         super().initialize(physics_sim_view)
-
+        self.disable_gravity()
         verbose = True
         # kps=[67108] * (self.num_dof - 4) + [10000000] * 4,
         # kds=[107374] * (self.num_dof - 4) + [200000] * 4,
-        kps=[15000] * (self.num_dof - 6) + [11459] * 6,
-        kds=[1500] * (self.num_dof - 6) + [1145] * 6,
-        
+        # kps=[15000] * (self.num_dof - 6) + [11459] * 6,
+        # kds=[1500] * (self.num_dof - 6) + [1145] * 6,
+        kps=[34.90659] *  (self.num_dof - 6) + [11459] * 6,
+        kds=[349.06586] *  (self.num_dof - 6) + [1145] * 6,
+
         if verbose:
             print("setting UR gains:")
             print("- kps: {}".format(kps))

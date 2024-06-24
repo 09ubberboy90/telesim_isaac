@@ -27,7 +27,7 @@ from ur3.ur_robotiq import CortexUR
 class UR_World(TeleopWorld):
     def __init__(self):
         self.urdf_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/urdfs/ur5e_robotiq.urdf"
-        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/config"
+        self.rmp_path = "/home/ubb/Documents/Baxter_isaac/ROS2/src/ur_robotiq/ur_robotiq_isaac/config/ur5_rmp_config.json"
 
         super().__init__(simulation_app)
         self.ros_sub = self.create_subscription(
