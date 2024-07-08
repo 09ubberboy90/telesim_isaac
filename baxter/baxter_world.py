@@ -44,7 +44,7 @@ class Baxter_World(TeleopWorld):
             Pose, "bp/baxter/left_hand/pose", self.move_left_cube_unreal_callback, 10
         )
 
-        # self.tracking_enabled["left"] = False # Left hand is not tracked by default
+        self.tracking_enabled["left"] = False # Left hand is not tracked by default
 
     def move_right_cube_callback(self, data: Pose):
         if data.position.x > 3000:
@@ -96,19 +96,18 @@ class Baxter_World(TeleopWorld):
             w=data.orientation.w,
         )
         offset_rot = pyq.Quaternion(
-            w=0.707, x=0.0, y=0.0, z=-0.707
+            w=0.707, x=0.0, y=0.0, z=0.707
         )  ## Handles Changing axis
         x_offset = pyq.Quaternion(
             w=0, x=1.0, y=0.0, z=0
         )  ## 180 rotation on x
         q1 = offset_rot * q1
         q1 *= x_offset
-
+        
         self.right_cube_pose = (
-            (-data.position.x, -data.position.y, data.position.z),
+            (-data.position.y, data.position.x, data.position.z),
             (q1.w, q1.x, q1.y, q1.z),
         )
-
     def move_left_cube_unreal_callback(self, data: Pose):
         q1 = pyq.Quaternion(
             x=data.orientation.x,
@@ -117,7 +116,7 @@ class Baxter_World(TeleopWorld):
             w=data.orientation.w,
         )
         offset_rot = pyq.Quaternion(
-            w=0.707, x=0.0, y=0.0, z=-0.707
+            w=0.707, x=0.0, y=0.0, z=0.707
         )  ## Handles Changing axis
         x_offset = pyq.Quaternion(
             w=0, x=1.0, y=0.0, z=0
@@ -126,7 +125,7 @@ class Baxter_World(TeleopWorld):
         q1 *= x_offset
         
         self.left_cube_pose = (
-            (-data.position.x, -data.position.y, data.position.z),
+            (-data.position.y, data.position.x, data.position.z),
             (q1.w, q1.x, q1.y, q1.z),
         )
 
